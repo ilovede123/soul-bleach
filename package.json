@@ -1,0 +1,86 @@
+{
+  "name": "soul-agent",
+  "displayName": "soul-agent",
+  "description": "for code and opration file",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.120.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "soul-agent",
+          "title": "Soul Agent",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "soul-agent": [
+        {
+          "type": "webview",
+          "id": "soulAgentView",
+          "name": "灵境"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "soul-agent.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "soul-agent.run",
+        "title": "run agent"
+      },
+      {
+        "command": "soul-agent.test",
+        "title": "agent test"
+      }
+    ],
+    "configuration": {
+      "title": "run agent",
+      "properties": {
+        "soul-agent.baseUrl": {
+          "type": "string",
+          "default": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+          "description": "接入模型的API地址"
+        },
+        "soul-agent.apiKey": {
+          "type": "string",
+          "default": "sk-a4032a34ce194e08acbf4b97babf0da6",
+          "description": "你的API Key"
+        },
+        "soul-agent.model": {
+          "type": "string",
+          "default": "qwen3.7-plus",
+          "description": "模型名称，例如 qwen3.7-plus、qwen3-8b"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "~22.19.21",
+    "@types/vscode": "^1.120.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.39.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  }
+}
