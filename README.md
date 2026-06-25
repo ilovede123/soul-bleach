@@ -17,7 +17,7 @@
 
 ### 使用要求
 
-你需要准备一个兼容 OpenAI Chat Completions 格式的接口。如果接口需要鉴权，请填写 API Key；如果是内网无鉴权模型，可以留空。
+你需要准备一个兼容 OpenAI Chat Completions 格式的接口。如果接口需要鉴权，请填写 API Key；如果是无鉴权模型，可以留空。
 
 默认接口地址：
 
@@ -30,7 +30,7 @@ https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 插件提供以下 VS Code 设置项：
 
 - `soul-bleach.baseUrl`：模型接口地址。
-- `soul-bleach.apiKey`：API Key。填写后会作为 `Authorization: Bearer ...` 请求头发送；内网无鉴权模型可以留空。
+- `soul-bleach.apiKey`：API Key。填写后会作为 `Authorization: Bearer ...` 请求头发送；无鉴权模型可以留空。
 - `soul-bleach.model`：模型名称，例如 `qwen-plus` 或其他兼容模型。
 
 ### 使用方式
@@ -49,7 +49,9 @@ https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 
 ### 更新记录
 
-#### 0.0.1
+#### 0.0.10
+
+增加搜索文件功能search_file
 
 初始开发版本。
 
