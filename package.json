@@ -1,8 +1,8 @@
 {
-  "name": "soul-agent",
-  "displayName": "soul-agent",
-  "description": "for code and opration file",
-  "version": "0.0.1",
+  "name": "soul-bleach",
+  "displayName": "灵境",
+  "description": "A VS Code sidebar AI assistant for chatting with models and working with workspace files.",
+  "version": "0.0.10",
   "engines": {
     "vscode": "^1.120.0"
   },
@@ -15,49 +15,49 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "soul-agent",
-          "title": "Soul Agent",
-          "icon": "$(hubot)"
+          "id": "soul-bleach",
+          "title": "灵境",
+          "icon": "media/soul-bleach.svg"
         }
       ]
     },
     "views": {
-      "soul-agent": [
+      "soul-bleach": [
         {
           "type": "webview",
-          "id": "soulAgentView",
+          "id": "soulBleachView",
           "name": "灵境"
         }
       ]
     },
     "commands": [
       {
-        "command": "soul-agent.helloWorld",
-        "title": "Hello World"
+        "command": "soul-bleach.helloWorld",
+        "title": "灵境: Hello World"
       },
       {
-        "command": "soul-agent.run",
-        "title": "run agent"
+        "command": "soul-bleach.run",
+        "title": "灵境: Run Agent"
       },
       {
-        "command": "soul-agent.test",
-        "title": "agent test"
+        "command": "soul-bleach.test",
+        "title": "灵境: Agent Test"
       }
     ],
     "configuration": {
-      "title": "run agent",
+      "title": "灵境",
       "properties": {
-        "soul-agent.baseUrl": {
+        "soul-bleach.baseUrl": {
           "type": "string",
           "default": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-          "description": "接入模型的API地址"
+          "description": ""
         },
-        "soul-agent.apiKey": {
+        "soul-bleach.apiKey": {
           "type": "string",
-          "default": "sk-a4032a34ce194e08acbf4b97babf0da6",
-          "description": "你的API Key"
+          "default": "",
+          "description": "API Key。内网无鉴权模型可以留空"
         },
-        "soul-agent.model": {
+        "soul-bleach.model": {
           "type": "string",
           "default": "qwen3.7-plus",
           "description": "模型名称，例如 qwen3.7-plus、qwen3-8b"
@@ -67,6 +67,7 @@
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",
+    "package": "vsce package",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
@@ -79,6 +80,7 @@
     "@types/vscode": "^1.120.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.9.2",
     "eslint": "^9.39.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
