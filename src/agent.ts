@@ -196,7 +196,6 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
         // user -> assistant(tool_calls) -> 本地执行 read_file/list_files
         //      -> tool(result) -> assistant(content) -> 返回给前端
         //
-        // 你之前遇到的问题就在这里：
         // 第一轮 assistant 只有 tool_calls，没有 content，所以前端没有正文可显示。
         // 必须继续循环，把工具结果塞回 messages，再请求第二轮，才能拿到最终 content。
         const message = await completion(messages, TOOLS, onChunk, signal);
@@ -220,10 +219,7 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
             // 这里才能安全地 JSON.parse 成真正的参数对象。
             const args = parseToolArguments(name, rawArgs);
             if (toolCall.function) {
-                // Some OpenAI-compatible servers validate historical tool_calls
-                // on the follow-up request. If we repaired malformed arguments,
-                // write the normalized JSON back before this assistant message
-                // is sent again in messages.
+
                 toolCall.function.arguments = JSON.stringify(args);
             }
             const result = executeTool(name, args);
