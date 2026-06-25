@@ -2,9 +2,6 @@ import { completion } from './request';
 import { readFile, writeFile, listFiles, findFiles, readFileWithLineNumbers, replaceRange } from './tool';
 
 const TOOLS = [
-    // 这里定义的是“模型可以调用的工具清单”。
-    // 注意：模型不会真的自己读文件，它只会返回一个 tool_call，
-    // 告诉我们的程序“请帮我调用 read_file，并传这些参数”。
     {
         type: 'function',
         function: {
@@ -129,8 +126,6 @@ const TOOLS = [
 ];
 
 function executeTool(name: string, args: Record<string, string>): string {
-    // completion() 只负责和模型通信，不直接碰文件系统。
-    // 真正的文件读写都集中在这里分发，方便以后加权限检查、日志或错误处理。
     if (name === 'read_file') {
         return readFile(args.path);
     }
@@ -158,12 +153,6 @@ function executeTool(name: string, args: Record<string, string>): string {
 }
 
 export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
-    // messages 是每一轮要发给模型的完整上下文。
-    // 它会逐步增长：
-    // 1. system + user
-    // 2. assistant 的 tool_calls
-    // 3. tool 的执行结果
-    // 4. assistant 根据工具结果给出的最终文字回答
     const messages: any[] = [
         {
             role: 'system',
@@ -187,24 +176,10 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
     for (let i = 0; i < maxIterations; i++) {
         throwIfAborted(signal);
 
-        // 每次 completion 都是“一轮模型调用”。
-        //
-        // 普通聊天：
-        // user -> assistant(content) -> 直接返回给前端
-        //
-        // 查看文件：
-        // user -> assistant(tool_calls) -> 本地执行 read_file/list_files
-        //      -> tool(result) -> assistant(content) -> 返回给前端
-        //
-        // 第一轮 assistant 只有 tool_calls，没有 content，所以前端没有正文可显示。
-        // 必须继续循环，把工具结果塞回 messages，再请求第二轮，才能拿到最终 content。
         const message = await completion(messages, TOOLS, onChunk, signal);
         messages.push(message);
 
         if (!message.tool_calls || message.tool_calls.length === 0) {
-            // 没有 tool_calls，说明模型这一轮已经给出了最终文本回答。
-            // onChunk 在 completion() 里已经把内容流式推给 webview；
-            // 这里 return 是为了命令面板等非前端调用也能拿到完整结果。
             return message.content ?? '';
         }
 
@@ -214,9 +189,6 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
             const name = toolCall.function?.name;
             const rawArgs = toolCall.function?.arguments || '{}';
 
-            // 流式 tool_calls 的 arguments 是字符串形式的 JSON。
-            // request.ts 已经负责把多段 arguments 拼完整；
-            // 这里才能安全地 JSON.parse 成真正的参数对象。
             const args = parseToolArguments(name, rawArgs);
             if (toolCall.function) {
 
@@ -224,9 +196,6 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
             }
             const result = executeTool(name, args);
 
-            // 工具执行结果必须按 role: 'tool' 放回 messages。
-            // 模型下一轮会看到这个结果，然后基于文件内容生成自然语言回答。
-            // 如果不 push 这一条，模型只知道“我要读文件”，但永远看不到文件内容。
             messages.push({
                 role: 'tool',
                 tool_call_id: toolCall.id,

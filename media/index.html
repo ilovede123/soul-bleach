@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Copilot Ultra Pro Max</title>
+    <title>灵境</title>
     
     <script>
-        // 内网极简 Markdown 解析器
+        // 轻量 Markdown 渲染，避免额外依赖。
         const SimpleMarked = {
             parse(text) {
                 let html = text
@@ -46,7 +46,6 @@
             overflow: hidden;
         }
         
-        /* 1. 聊天窗口区域 */
         #chat-scroller {
             flex: 1;
             overflow-y: auto;
@@ -115,7 +114,6 @@
         }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-        /* 2. 底部自适应输入控制槽 */
         #input-container {
             padding: 10px 14px 12px;
             background-color: var(--vscode-sidebar-background, #252526);
@@ -174,7 +172,6 @@
             background: rgba(255, 255, 255, 0.24);
         }
         
-        /* 3. 发送按钮核心样式（可点击态） */
         #send-btn {
             background-color: var(--vscode-button-background, #0e639c);
             color: var(--vscode-button-foreground, #ffffff);
@@ -209,7 +206,6 @@
             transition: background-color 0.15s, color 0.15s, border-color 0.15s;
         }
 
-        /* 鼠标悬浮：变深并轻微放大 */
         #send-btn:hover { 
             background-color: var(--vscode-button-hoverBackground, #1177bb);
             transform: scale(1.05);
@@ -220,7 +216,6 @@
             border-color: rgba(255, 255, 255, 0.08);
         }
         
-        /* 鼠标按压：Q弹物理下沉反馈 */
         #send-btn:active { 
             transform: scale(0.90);
         }
@@ -228,13 +223,12 @@
             background: rgba(255, 255, 255, 0.1);
         }
 
-        /* 4. 彻底禁用的状态（没内容时，灰显且不响应任何 hover / 点击效果） */
         #send-btn:disabled {
             opacity: 0.25 !important;
             background-color: var(--vscode-button-background, #0e639c) !important;
             cursor: default !important;
             transform: none !important;
-            pointer-events: none !important; /* 锁死鼠标事件 */
+            pointer-events: none !important;
         }
 
         .toolbar-icon {
@@ -257,7 +251,7 @@
     <div id="chat-scroller">
         <div class="message-row agent">
             <div class="message-label">灵境</div>
-            <div class="message-bubble">你好！我是你的发助手，有什么我可以帮你的？</div>
+            <div class="message-bubble">你好！我是你的开发助手，有什么我可以帮你的？</div>
         </div>
     </div>
 
@@ -319,14 +313,12 @@
             }
         }
 
-        // 监听输入：根据输入内容实时切换 disabled 状态
         textarea.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 140) + 'px';
             updateSendButtonState();
         });
 
-        // 统一消息递交通道
         function handleCommit() {
             if (isGenerating) {
                 vscode.postMessage({ command: 'stop-generation' });
@@ -414,7 +406,7 @@
 
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble';
-            bubble.innerText = '你好！我是你的发助手，有什么我可以帮你的？';
+            bubble.innerText = '你好！我是你的开发助手，有什么我可以帮你的？';
 
             row.appendChild(label);
             row.appendChild(bubble);
@@ -443,7 +435,6 @@
 
         restoreHistory();
 
-        // 接收来自后台大模型的流式数据事件机制
         window.addEventListener('message', event => {
             const msg = event.data;
 

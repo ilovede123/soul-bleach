@@ -116,25 +116,19 @@ export function findFiles(query: string, maxResults = 30): string {
 
 export function readFileWithLineNumbers(filePath: string): string {
     const content = readFile(filePath);
-    //切割成数组
-    const contentArr = content.split(/\r?\n/).map((str, index) => {
-        //加上行号
-        return `${index + 1} | ${str}`;
-    });
 
-    //转换成字符串
-    const contentStr = contentArr.join("\n");
-    return contentStr;
+    return content
+        .split(/\r?\n/)
+        .map((str, index) => `${index + 1} | ${str}`)
+        .join('\n');
 }
 
 
 export function replaceRange(path: string, startLine: number, endLine: number, newContent: string): string {
-    //读取需要修改的代码源文件
     const origin = readFile(path);
     const eol = origin.includes('\r\n') ? '\r\n' : '\n';
-    //转换成数组
     const originArr = origin.split(/\r?\n/);
-    //判定startLine和endLine边界校验,防止模型读错
+
     if (startLine < 1) {
         throw Error('开始行数不能小于1');
     }
@@ -147,9 +141,9 @@ export function replaceRange(path: string, startLine: number, endLine: number, n
     }
     const startIndex = startLine - 1;
     const deleteCount = endLine - startIndex;
-    //新内容转换成数组
     const newContentArr = newContent.split(/\r?\n/);
     originArr.splice(startIndex, deleteCount, ...newContentArr);
+
     const newContentStr = originArr.join(eol);
     writeFile(path, newContentStr);
     return `已替换 ${path} 第 ${startLine}-${endLine} 行`;
