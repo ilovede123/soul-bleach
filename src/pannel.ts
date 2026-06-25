@@ -27,9 +27,7 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
                 this.currentAbortController = new AbortController();
                 webviewView.webview.postMessage({ command: 'stream-start' });
                 try {
-                     await runAgent(message.text, (chunk) => {
-                        // console.log(chunk,'---chunk');
-                        //把结果推回webview
+                    await runAgent(message.text, (chunk) => {
                         webviewView.webview.postMessage({ command: 'stream-chunk', text: chunk });
                     }, this.currentAbortController.signal);
                 } catch (e: any) {
@@ -53,15 +51,7 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
     }
 
     private getHtml(webview: vscode.Webview): string {
-        // const htmlPath = path.join(this.context.extensionPath, 'media', 'index.html');
-        // return fs.readFileSync(htmlPath, 'utf-8');
         const htmlPath = path.join(this.context.extensionPath, 'media', 'index.html');
-        const html = fs.readFileSync(htmlPath, 'utf-8');
-        // console.log('html内容长度:', html.length);
-        // console.log('html前100字符:', html.substring(0, 100));
-        return html;
-
+        return fs.readFileSync(htmlPath, 'utf-8');
     }
-
-
 }
