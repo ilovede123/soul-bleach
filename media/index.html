@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Copilot Ultra Pro Max</title>
+    
+    <script>
+        // 内网极简 Markdown 解析器
+        const SimpleMarked = {
+            parse(text) {
+                let html = text
+                    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                    .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
+                    .replace(/\*(.*)\*/gim, '<em>$1</em>')
+                    .replace(/`([^`]+)`/gim, '<code>$1</code>');
+                
+                const codeBlockRegex = /```([\s\S]*?)```/gm;
+                let match;
+                while ((match = codeBlockRegex.exec(html)) !== null) {
+                    const codeContent = match[1].replace(/^\w+\n/, '');
+                    html = html.replace(match[0], `<pre><code>${codeContent}</code></pre>`);
+                }
+                return html.trim().split('\n').join('<br>');
+            }
+        };
+    </script>
+
+    <style>
+        :root {
+            --input-height: 38px;
+        }
+        body {
+            background-color: var(--vscode-sidebar-background, #252526);
+            color: var(--vscode-sidebar-foreground, #cccccc);
+            font-family: var(--vscode-font-family, -apple-system, sans-serif);
+            font-size: var(--vscode-font-size, 13px);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* 1. 聊天窗口区域 */
+        #chat-scroller {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        #chat-scroller::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-scroller::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        #chat-scroller::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .message-row {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+        .message-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            opacity: 0.5;
+        }
+        .user .message-label { align-self: flex-end; color: var(--vscode-textLink-foreground, #3794ff); }
+        .agent .message-label { align-self: flex-start; color: var(--vscode-testing-iconPassed, #73c991); }
+        
+        .message-bubble {
+            padding: 11px 15px;
+            border-radius: 8px;
+            max-width: 88%;
+            word-wrap: break-word;
+            line-height: 1.6;
+            font-size: 13px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .user .message-bubble {
+            background: linear-gradient(135deg, var(--vscode-button-secondaryBackground, #3a3d3d), rgba(255,255,255,0.02));
+            color: var(--vscode-button-secondaryForeground, #ffffff);
+            align-self: flex-end;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom-right-radius: 2px;
+        }
+        .agent .message-bubble {
+            background: var(--vscode-editor-background, #1e1e1e);
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.06));
+            align-self: flex-start;
+            border-top-left-radius: 2px;
+        }
+
+        .streaming-active::after {
+            content: '▌';
+            animation: blink 0.8s infinite;
+            color: var(--vscode-textLink-foreground, #3794ff);
+            margin-left: 6px;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        /* 2. 底部自适应输入控制槽 */
+        #input-container {
+            padding: 10px 14px 12px;
+            background-color: var(--vscode-sidebar-background, #252526);
+            border-top: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+        }
+        .input-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            min-height: 22px;
+            margin-bottom: 6px;
+        }
+        .input-wrapper {
+            display: flex;
+            align-items: flex-end;
+            background-color: var(--vscode-input-background, #3c3c3c);
+            border: 1px solid var(--vscode-input-border, transparent);
+            border-radius: 8px;
+            padding: 9px 10px;
+            gap: 8px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-wrapper:focus-within {
+            border-color: var(--vscode-focusBorder, #007fd4);
+            box-shadow: 0 0 4px rgba(0, 127, 212, 0.25);
+        }
+        #user-textarea {
+            flex: 1;
+            height: var(--input-height);
+            max-height: 140px;
+            background: transparent;
+            color: var(--vscode-input-foreground, #cccccc);
+            border: none;
+            resize: none;
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.5;
+            outline: none;
+            margin: 0;
+            padding: 1px 2px 1px 0;
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+        }
+        #user-textarea::-webkit-scrollbar {
+            width: 6px;
+        }
+        #user-textarea::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #user-textarea::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.14);
+            border-radius: 999px;
+        }
+        #user-textarea::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.24);
+        }
+        
+        /* 3. 发送按钮核心样式（可点击态） */
+        #send-btn {
+            background-color: var(--vscode-button-background, #0e639c);
+            color: var(--vscode-button-foreground, #ffffff);
+            border: none;
+            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            min-height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 1;
+            transition: background-color 0.15s, opacity 0.15s, transform 0.1s;
+        }
+
+        #clear-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 22px;
+            padding: 0 7px;
+            background: transparent;
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.72));
+            border: 1px solid transparent;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        /* 鼠标悬浮：变深并轻微放大 */
+        #send-btn:hover { 
+            background-color: var(--vscode-button-hoverBackground, #1177bb);
+            transform: scale(1.05);
+        }
+        #clear-btn:hover {
+            color: var(--vscode-foreground, #ffffff);
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+        
+        /* 鼠标按压：Q弹物理下沉反馈 */
+        #send-btn:active { 
+            transform: scale(0.90);
+        }
+        #clear-btn:active {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* 4. 彻底禁用的状态（没内容时，灰显且不响应任何 hover / 点击效果） */
+        #send-btn:disabled {
+            opacity: 0.25 !important;
+            background-color: var(--vscode-button-background, #0e639c) !important;
+            cursor: default !important;
+            transform: none !important;
+            pointer-events: none !important; /* 锁死鼠标事件 */
+        }
+
+        .toolbar-icon {
+            width: 13px;
+            height: 13px;
+            fill: currentColor;
+            display: block;
+        }
+
+        pre { background: #1a1a1a; color: #f8f8f2; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; border: 1px solid rgba(255,255,255,0.04); }
+        code { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 4px; color: #e5c07b; }
+        pre code { background: transparent; padding: 0; color: inherit;}
+        h1, h2, h3 { margin: 6px 0; font-size: 1.15em; font-weight: 600; color: var(--vscode-textLink-foreground); }
+        p { margin: 0 0 8px 0; }
+        p:last-child { margin-bottom: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="chat-scroller">
+        <div class="message-row agent">
+            <div class="message-label">灵境</div>
+            <div class="message-bubble">你好！我是你的发助手，有什么我可以帮你的？</div>
+        </div>
+    </div>
+
+    <div id="input-container">
+        <div class="input-toolbar">
+            <button id="clear-btn" title="清空聊天记录">
+                <svg class="toolbar-icon" viewBox="0 0 24 24">
+                    <path d="M9 3h6l1 2h5v2H3V5h5l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z"/>
+                </svg>
+                <span>清空</span>
+            </button>
+        </div>
+        <div class="input-wrapper">
+            <textarea id="user-textarea" placeholder="向智能体提问... (Enter 发送，Ctrl+Enter 换行)"></textarea>
+            <button id="send-btn" title="发送" disabled>
+                <svg class="toolbar-icon" viewBox="0 0 24 24">
+                    <path d="M24 0l-6 22-5-9-11-5zM13 13l4-8-8 6zm-2 2v7l3-4z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        const scroller = document.getElementById('chat-scroller');
+        const textarea = document.getElementById('user-textarea');
+        const sendBtn = document.getElementById('send-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const MAX_HISTORY_ITEMS = 100;
+        const sendIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M24 0l-6 22-5-9-11-5zM13 13l4-8-8 6zm-2 2v7l3-4z"/></svg>';
+        const stopIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>';
+
+        let currentActiveBubble = null;
+        let accumulatedText = "";
+        let chatHistory = vscode.getState()?.chatHistory ?? [];
+        let isGenerating = false;
+        let isShowingThinking = false;
+
+        function saveHistory() {
+            if (chatHistory.length > MAX_HISTORY_ITEMS) {
+                chatHistory = chatHistory.slice(-MAX_HISTORY_ITEMS);
+            }
+
+            vscode.setState({ chatHistory });
+        }
+
+        function setGenerating(value) {
+            isGenerating = value;
+            sendBtn.innerHTML = isGenerating ? stopIcon : sendIcon;
+            sendBtn.title = isGenerating ? '停止' : '发送';
+            updateSendButtonState();
+        }
+
+        function updateSendButtonState() {
+            if (isGenerating || textarea.value.trim().length > 0) {
+                sendBtn.removeAttribute('disabled');
+            } else {
+                sendBtn.setAttribute('disabled', 'true');
+            }
+        }
+
+        // 监听输入：根据输入内容实时切换 disabled 状态
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+            updateSendButtonState();
+        });
+
+        // 统一消息递交通道
+        function handleCommit() {
+            if (isGenerating) {
+                vscode.postMessage({ command: 'stop-generation' });
+                return;
+            }
+
+            const text = textarea.value.trim();
+            if (!text) return;
+
+            appendMessage('user', text, true);
+            textarea.value = '';
+            textarea.style.height = '38px';
+            setGenerating(true);
+
+            vscode.postMessage({ command: 'user-input', text: text });
+        }
+
+        sendBtn.addEventListener('click', handleCommit);
+        clearBtn.addEventListener('click', clearChat);
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') {
+                return;
+            }
+
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                insertTextareaNewline();
+                return;
+            }
+
+            if (!e.shiftKey && !e.altKey) {
+                e.preventDefault();
+                handleCommit();
+            }
+        });
+
+        function insertTextareaNewline() {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const value = textarea.value;
+
+            textarea.value = `${value.slice(0, start)}\n${value.slice(end)}`;
+            textarea.selectionStart = start + 1;
+            textarea.selectionEnd = start + 1;
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
+            updateSendButtonState();
+        }
+
+        function appendMessage(role, text, shouldSave = false) {
+            const row = document.createElement('div');
+            row.className = `message-row ${role}`;
+            
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.innerText = role === 'user' ? '你' : '灵境';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            if (role === 'agent') {
+                bubble.innerHTML = SimpleMarked.parse(text);
+            } else {
+                bubble.innerText = text;
+            }
+
+            row.appendChild(label);
+            row.appendChild(bubble);
+            scroller.appendChild(row);
+            scroller.scrollTop = scroller.scrollHeight;
+
+            if (shouldSave) {
+                chatHistory.push({ role, text });
+                saveHistory();
+            }
+        }
+
+        function appendWelcomeMessage() {
+            const row = document.createElement('div');
+            row.className = 'message-row agent';
+
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.innerText = '灵境';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.innerText = '你好！我是你的发助手，有什么我可以帮你的？';
+
+            row.appendChild(label);
+            row.appendChild(bubble);
+            scroller.appendChild(row);
+        }
+
+        function clearChat() {
+            if (isGenerating) {
+                vscode.postMessage({ command: 'stop-generation' });
+            }
+
+            chatHistory = [];
+            accumulatedText = "";
+            currentActiveBubble = null;
+            saveHistory();
+
+            scroller.innerHTML = '';
+            appendWelcomeMessage();
+        }
+
+        function restoreHistory() {
+            for (const item of chatHistory) {
+                appendMessage(item.role, item.text, false);
+            }
+        }
+
+        restoreHistory();
+
+        // 接收来自后台大模型的流式数据事件机制
+        window.addEventListener('message', event => {
+            const msg = event.data;
+
+            if (msg.command === 'stream-start') {
+                setGenerating(true);
+                accumulatedText = "";
+                isShowingThinking = false;
+                const row = document.createElement('div');
+                row.className = 'message-row agent';
+                
+                const label = document.createElement('div');
+                label.className = 'message-label';
+                label.innerText = '灵境';
+
+                currentActiveBubble = document.createElement('div');
+                currentActiveBubble.className = 'message-bubble streaming-active';
+
+                row.appendChild(label);
+                row.appendChild(currentActiveBubble);
+                scroller.appendChild(row);
+            } 
+            else if (msg.command === 'stream-chunk') {
+                if (currentActiveBubble) {
+                    if (msg.text === '__SOUL_BLEACH_THINKING__') {
+                        isShowingThinking = true;
+                        currentActiveBubble.innerText = '思考中...';
+                        scroller.scrollTop = scroller.scrollHeight;
+                        return;
+                    }
+
+                    if (isShowingThinking && accumulatedText.length === 0) {
+                        isShowingThinking = false;
+                        currentActiveBubble.innerHTML = '';
+                    }
+
+                    accumulatedText += msg.text;
+                    currentActiveBubble.innerHTML = SimpleMarked.parse(accumulatedText);
+                    scroller.scrollTop = scroller.scrollHeight;
+                }
+            } 
+            else if (msg.command === 'stream-end') {
+                if (currentActiveBubble) {
+                    currentActiveBubble.classList.remove('streaming-active');
+                    currentActiveBubble = null;
+                    if (accumulatedText.trim().length > 0) {
+                        chatHistory.push({ role: 'agent', text: accumulatedText });
+                        saveHistory();
+                    }
+                    accumulatedText = "";
+                    isShowingThinking = false;
+                }
+                setGenerating(false);
+            }
+        });
+    </script>
+</body>
+</html>
