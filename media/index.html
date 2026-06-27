@@ -9,24 +9,45 @@
         // 轻量 Markdown 渲染，避免额外依赖。
         const SimpleMarked = {
             parse(text) {
-                let html = text
-                    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                const escaped = escapeHtml(text);
+                const codeBlockRegex = /```([a-zA-Z0-9_-]+)?\n?([\s\S]*?)(```|$)/g;
+                let html = '';
+                let lastIndex = 0;
+                let match;
+
+                while ((match = codeBlockRegex.exec(escaped)) !== null) {
+                    html += renderInline(escaped.slice(lastIndex, match.index));
+                    html += `<pre><code>${match[2]}</code></pre>`;
+                    lastIndex = codeBlockRegex.lastIndex;
+
+                    if (match[3] !== '```') {
+                        break;
+                    }
+                }
+
+                html += renderInline(escaped.slice(lastIndex));
+                return html.trim();
+            }
+        };
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        function renderInline(text) {
+            return text
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
                     .replace(/^## (.*$)/gim, '<h2>$1</h2>')
                     .replace(/^# (.*$)/gim, '<h1>$1</h1>')
                     .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
                     .replace(/\*(.*)\*/gim, '<em>$1</em>')
-                    .replace(/`([^`]+)`/gim, '<code>$1</code>');
-                
-                const codeBlockRegex = /```([\s\S]*?)```/gm;
-                let match;
-                while ((match = codeBlockRegex.exec(html)) !== null) {
-                    const codeContent = match[1].replace(/^\w+\n/, '');
-                    html = html.replace(match[0], `<pre><code>${codeContent}</code></pre>`);
-                }
-                return html.trim().split('\n').join('<br>');
-            }
-        };
+                    .replace(/`([^`]+)`/gim, '<code>$1</code>')
+                    .split('\n')
+                    .join('<br>');
+        }
     </script>
 
     <style>
