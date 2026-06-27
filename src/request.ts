@@ -113,7 +113,7 @@ function createThinkFilter(onChunk?: (text: string) => void) {
 
                 const thinkStart = buffer.indexOf('<think>');
                 if (thinkStart === -1) {
-                    const keepLength = Math.min(buffer.length, '<think>'.length - 1);
+                    const keepLength = getThinkPrefixLength(buffer);
                     const emitLength = buffer.length - keepLength;
 
                     if (emitLength > 0) {
@@ -140,6 +140,19 @@ function createThinkFilter(onChunk?: (text: string) => void) {
             buffer = '';
         }
     };
+}
+
+function getThinkPrefixLength(text: string): number {
+    const tag = '<think>';
+    const maxLength = Math.min(text.length, tag.length - 1);
+
+    for (let length = maxLength; length > 0; length--) {
+        if (tag.startsWith(text.slice(-length))) {
+            return length;
+        }
+    }
+
+    return 0;
 }
 
 function createAbortError(): Error {
