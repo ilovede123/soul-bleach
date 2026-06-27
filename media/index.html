@@ -10,7 +10,7 @@
         const SimpleMarked = {
             parse(text) {
                 const escaped = escapeHtml(text);
-                const codeBlockRegex = /```([a-zA-Z0-9_-]+)?\n?([\s\S]*?)(```|$)/g;
+                const codeBlockRegex = /```([a-zA-Z0-9_-]+)?(?:\r?\n)?([\s\S]*?)(```|$)/g;
                 let html = '';
                 let lastIndex = 0;
                 let match;
@@ -259,7 +259,7 @@
             display: block;
         }
 
-        pre { background: #1a1a1a; color: #f8f8f2; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; border: 1px solid rgba(255,255,255,0.04); }
+        pre { background: #1a1a1a; color: #f8f8f2; padding: 10px; border-radius: 6px; overflow-x: auto; margin: 8px 0; border: 1px solid rgba(255,255,255,0.04); white-space: pre-wrap; }
         code { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 4px; color: #e5c07b; }
         pre code { background: transparent; padding: 0; color: inherit;}
         h1, h2, h3 { margin: 6px 0; font-size: 1.15em; font-weight: 600; color: var(--vscode-textLink-foreground); }
