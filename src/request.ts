@@ -74,6 +74,7 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
     if (buffer) {
         parseSseLine(buffer, fullMessage, thinkFilter.handleText);
     }
+    thinkFilter.flush();
 
     if (!fullMessage.content) {
         delete fullMessage.content;
@@ -131,6 +132,12 @@ function createThinkFilter(onChunk?: (text: string) => void) {
                 isThinking = true;
                 onChunk?.('__SOUL_BLEACH_THINKING__');
             }
+        },
+        flush() {
+            if (!isThinking && buffer.length > 0) {
+                onChunk?.(buffer);
+            }
+            buffer = '';
         }
     };
 }
