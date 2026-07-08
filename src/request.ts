@@ -7,14 +7,23 @@ import * as vscode from "vscode";
  * 这样同一套 Agent 逻辑可以在千问、智谱和内网 OpenAI-compatible 服务之间切换。
  */
 type ModelProvider = 'qwen' | 'zhipu' | 'custom';
+type ModelPreset = 'provider-default' | 'qwen3.7-plus' | 'qwen3.7-max' | 'qwen-plus' | 'glm-5.2' | 'custom';
 
-const PROVIDER_PRESETS: Record<ModelProvider, { baseUrl: string; model: string; extraBody?: Record<string, unknown> }> = {
+type RequestPreset = {
+    baseUrl: string;
+    model: string;
+    extraBody?: Record<string, unknown>;
+};
+
+const QWEN_EXTRA_BODY = {
+    enable_thinking: false
+};
+
+const PROVIDER_PRESETS: Record<ModelProvider, RequestPreset> = {
     qwen: {
         baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
         model: 'qwen3.7-plus',
-        extraBody: {
-            enable_thinking: false
-        }
+        extraBody: QWEN_EXTRA_BODY
     },
     zhipu: {
         baseUrl: 'https://api.z.ai/api/paas/v4/chat/completions',
@@ -26,14 +35,44 @@ const PROVIDER_PRESETS: Record<ModelProvider, { baseUrl: string; model: string; 
     }
 };
 
+const MODEL_PRESETS: Record<Exclude<ModelPreset, 'provider-default'>, RequestPreset> = {
+    'qwen3.7-plus': {
+        baseUrl: PROVIDER_PRESETS.qwen.baseUrl,
+        model: 'qwen3.7-plus',
+        extraBody: QWEN_EXTRA_BODY
+    },
+    'qwen3.7-max': {
+        baseUrl: PROVIDER_PRESETS.qwen.baseUrl,
+        model: 'qwen3.7-max',
+        extraBody: QWEN_EXTRA_BODY
+    },
+    'qwen-plus': {
+        baseUrl: PROVIDER_PRESETS.qwen.baseUrl,
+        model: 'qwen-plus',
+        extraBody: QWEN_EXTRA_BODY
+    },
+    'glm-5.2': {
+        baseUrl: PROVIDER_PRESETS.zhipu.baseUrl,
+        model: 'glm-5.2'
+    },
+    custom: {
+        baseUrl: '',
+        model: ''
+    }
+};
+
 export function getConfig() {
     const config = vscode.workspace.getConfiguration('soul-bleach');
     const provider = config.get<ModelProvider>('provider', 'qwen');
-    const preset = PROVIDER_PRESETS[provider] ?? PROVIDER_PRESETS.qwen;
-    const baseUrl = config.get<string>('baseUrl', '') || preset.baseUrl;
+    const modelPreset = config.get<ModelPreset>('modelPreset', 'provider-default');
+    const providerPreset = PROVIDER_PRESETS[provider] ?? PROVIDER_PRESETS.qwen;
+    const selectedPreset = modelPreset === 'provider-default'
+        ? providerPreset
+        : MODEL_PRESETS[modelPreset] ?? providerPreset;
+    const baseUrl = config.get<string>('baseUrl', '') || selectedPreset.baseUrl;
     const apiKey = config.get<string>('apiKey', '');
-    const model = config.get<string>('model', '') || preset.model;
-    return { provider, baseUrl, apiKey, model, extraBody: preset.extraBody ?? {} };
+    const model = config.get<string>('model', '') || selectedPreset.model;
+    return { provider, modelPreset, baseUrl, apiKey, model, extraBody: selectedPreset.extraBody ?? {} };
 }
 
 export async function completion(messages: any[], tools: any[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<any> {

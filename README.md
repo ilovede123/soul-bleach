@@ -37,18 +37,20 @@ https://api.z.ai/api/paas/v4/chat/completions
 插件提供以下 VS Code 设置项：
 
 - `soul-bleach.provider`：模型服务商，可选 `qwen`、`zhipu`、`custom`。
-- `soul-bleach.baseUrl`：Chat Completions 完整接口地址。留空时使用 provider 的默认地址。
+- `soul-bleach.modelPreset`：常用模型下拉框，可选跟随服务商、`qwen3.7-plus`、`qwen3.7-max`、`qwen-plus`、`glm-5.2` 或自定义。
+- `soul-bleach.baseUrl`：Chat Completions 完整接口地址。留空时使用 modelPreset 或 provider 的默认地址。
 - `soul-bleach.apiKey`：API Key。填写后会作为 `Authorization: Bearer ...` 请求头发送；无鉴权模型可以留空。
-- `soul-bleach.model`：模型名称。留空时使用 provider 的默认模型，例如 `qwen-plus` 或 `glm-5.2`。
+- `soul-bleach.model`：自定义模型名称。留空时使用 modelPreset 或 provider 的默认模型；填写后会覆盖下拉框选择。
 
 ### 智谱配置示例
 
 如果使用智谱官方接口：
 
 1. 将 `soul-bleach.provider` 设置为 `zhipu`。
-2. 填写 `soul-bleach.apiKey`。
-3. `soul-bleach.baseUrl` 可以留空，插件会使用智谱默认地址。
-4. `soul-bleach.model` 可以留空，插件默认使用 `glm-5.2`；也可以填写其他支持 Function Calling 的 GLM 模型。
+2. 将 `soul-bleach.modelPreset` 设置为 `glm-5.2`，或保持跟随服务商。
+3. 填写 `soul-bleach.apiKey`。
+4. `soul-bleach.baseUrl` 可以留空，插件会使用智谱默认地址。
+5. `soul-bleach.model` 可以留空；如需其他支持 Function Calling 的 GLM 模型，再手动填写。
 
 注意：插件里的 `baseUrl` 填的是完整请求地址，也就是包含 `/chat/completions` 的地址；这和 OpenAI SDK 示例中的 `baseURL` 根地址不是同一个概念。
 
@@ -57,9 +59,10 @@ https://api.z.ai/api/paas/v4/chat/completions
 1. 打开 VS Code 设置。
 2. 搜索 `soul-bleach`。
 3. 选择 `soul-bleach.provider`。
-4. 按需填写 `soul-bleach.apiKey`、`soul-bleach.baseUrl` 和 `soul-bleach.model`。
-5. 从 Activity Bar 打开「灵境」视图。
-6. 输入问题，或让智能体查看当前工作区文件。
+4. 选择 `soul-bleach.modelPreset`。
+5. 按需填写 `soul-bleach.apiKey`、`soul-bleach.baseUrl` 和 `soul-bleach.model`。
+6. 从 Activity Bar 打开「灵境」视图。
+7. 输入问题，或让智能体查看当前工作区文件。
 
 ### 注意事项
 
@@ -118,18 +121,20 @@ https://api.z.ai/api/paas/v4/chat/completions
 This extension contributes the following settings:
 
 - `soul-bleach.provider`: Model provider. Supported values are `qwen`, `zhipu`, and `custom`.
-- `soul-bleach.baseUrl`: Full Chat Completions endpoint. Leave it empty to use the selected provider default.
+- `soul-bleach.modelPreset`: Common model dropdown. Supported values include provider default, `qwen3.7-plus`, `qwen3.7-max`, `qwen-plus`, `glm-5.2`, and custom.
+- `soul-bleach.baseUrl`: Full Chat Completions endpoint. Leave it empty to use the selected model preset or provider default.
 - `soul-bleach.apiKey`: Optional API key. When set, it is sent as the `Authorization: Bearer ...` request header. Leave it empty for unauthenticated internal endpoints.
-- `soul-bleach.model`: Model name. Leave it empty to use the selected provider default, for example `qwen-plus` or `glm-5.2`.
+- `soul-bleach.model`: Custom model name. Leave it empty to use the selected model preset or provider default. When set, it overrides the dropdown selection.
 
 ### Zhipu Configuration
 
 To use the official Zhipu API:
 
 1. Set `soul-bleach.provider` to `zhipu`.
-2. Fill in `soul-bleach.apiKey`.
-3. Leave `soul-bleach.baseUrl` empty to use the built-in Zhipu endpoint.
-4. Leave `soul-bleach.model` empty to use `glm-5.2`, or set another GLM model that supports Function Calling.
+2. Set `soul-bleach.modelPreset` to `glm-5.2`, or keep provider default.
+3. Fill in `soul-bleach.apiKey`.
+4. Leave `soul-bleach.baseUrl` empty to use the built-in Zhipu endpoint.
+5. Leave `soul-bleach.model` empty, or set another GLM model that supports Function Calling.
 
 Note: the extension expects a full request endpoint in `baseUrl`, including `/chat/completions`. This differs from the `baseURL` root used in OpenAI SDK examples.
 
@@ -138,9 +143,10 @@ Note: the extension expects a full request endpoint in `baseUrl`, including `/ch
 1. Open VS Code settings.
 2. Search for `soul-bleach`.
 3. Choose `soul-bleach.provider`.
-4. Fill in `soul-bleach.apiKey`, `soul-bleach.baseUrl`, and `soul-bleach.model` as needed.
-5. Open the `灵境` view from the Activity Bar.
-6. Ask the assistant a question or request a workspace file inspection.
+4. Choose `soul-bleach.modelPreset`.
+5. Fill in `soul-bleach.apiKey`, `soul-bleach.baseUrl`, and `soul-bleach.model` as needed.
+6. Open the `灵境` view from the Activity Bar.
+7. Ask the assistant a question or request a workspace file inspection.
 
 ### Notes
 

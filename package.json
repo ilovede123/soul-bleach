@@ -2,7 +2,7 @@
   "name": "soul-bleach",
   "displayName": "灵境",
   "description": "A VS Code sidebar AI assistant for chatting with models and working with workspace files.",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "engines": {
     "vscode": "^1.120.0"
   },
@@ -60,12 +60,33 @@
             "智谱 Z.AI OpenAI-compatible 接口",
             "自定义 OpenAI-compatible 接口，例如内网模型服务"
           ],
-          "description": "模型服务商。选择 qwen 或 zhipu 时会自动使用对应默认接口和模型；baseUrl/model 填写后会覆盖默认值"
+          "description": "模型服务商。modelPreset 选择跟随服务商时，会使用这里对应的默认接口和模型"
+        },
+        "soul-bleach.modelPreset": {
+          "type": "string",
+          "default": "provider-default",
+          "enum": [
+            "provider-default",
+            "qwen3.7-plus",
+            "qwen3.7-max",
+            "qwen-plus",
+            "glm-5.2",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "跟随 provider 使用默认模型",
+            "千问 Qwen3.7 Plus，走阿里云百炼 OpenAI-compatible 接口",
+            "千问 Qwen3.7 Max，走阿里云百炼 OpenAI-compatible 接口",
+            "千问 Qwen Plus，走阿里云百炼 OpenAI-compatible 接口",
+            "智谱 GLM-5.2，走 Z.AI OpenAI-compatible 接口",
+            "自定义模型，配合 baseUrl 和 model 手动填写"
+          ],
+          "description": "常用模型下拉选择。选择具体模型时会自动使用对应服务商默认接口；model 手动填写后会覆盖该选项"
         },
         "soul-bleach.baseUrl": {
           "type": "string",
           "default": "",
-          "description": "Chat Completions 完整接口地址。留空时使用 provider 的默认地址；自定义内网模型时填写类似 http://host:port/v1/chat/completions"
+          "description": "Chat Completions 完整接口地址。留空时使用 modelPreset 或 provider 的默认地址；自定义内网模型时填写类似 http://host:port/v1/chat/completions"
         },
         "soul-bleach.apiKey": {
           "type": "string",
@@ -75,7 +96,7 @@
         "soul-bleach.model": {
           "type": "string",
           "default": "",
-          "description": "模型名称。留空时使用 provider 的默认模型，例如 qwen-plus 或 glm-5.2"
+          "description": "自定义模型名称。留空时使用 modelPreset 或 provider 的默认模型；填写后会覆盖下拉框选择"
         }
       }
     }
