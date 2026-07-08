@@ -11,6 +11,7 @@
 - 在 VS Code Activity Bar 中打开独立的「灵境」侧边栏。
 - 与 AI 助手进行流式对话。
 - 支持让模型通过工具调用列出文件、搜索文件、搜索文本、分段读取文件和写入文件。
+- 支持受限命令验证，例如编译、测试、lint 和只读 git 检查。
 - Webview 重新加载后保留可见聊天记录。
 - 支持停止正在生成的回复。
 - 支持清空当前聊天记录。
@@ -66,6 +67,8 @@ https://api.z.ai/api/paas/v4/chat/completions
 
 代码文件默认使用 `search_text` 定位关键行，再使用 `read_file_with_line_numbers` 分段读取片段，避免把大文件一次性放入模型上下文。
 
+修改文件后，智能体会优先重新读取修改区域确认结果，并可使用受限的 `run_command` 执行 `pnpm run compile`、`pnpm run lint`、`pnpm run test`、`git diff --stat` 等验证命令。
+
 当前聊天历史主要用于恢复侧边栏中可见的对话记录，暂未实现跨会话的长期模型记忆。
 
 ### 更新记录
@@ -89,6 +92,7 @@ The extension supports Qwen, Zhipu, and custom OpenAI-compatible Chat Completion
 - Open a dedicated `灵境` assistant view from the VS Code Activity Bar.
 - Chat with an AI assistant using streamed responses.
 - Let the assistant list files, search files, search text, read file ranges, and write files through tool calls.
+- Run restricted verification commands such as compile, test, lint, and read-only git checks.
 - Preserve visible chat history while the webview is reloaded.
 - Stop an in-progress response.
 - Clear the current chat history.
@@ -143,6 +147,8 @@ Note: the extension expects a full request endpoint in `baseUrl`, including `/ch
 The assistant can read and write files in the open workspace through its tools. Review generated changes before keeping them.
 
 Code files are usually handled by locating key lines with `search_text` first, then reading focused ranges with `read_file_with_line_numbers`.
+
+After edits, the assistant should reread the changed range and can use the restricted `run_command` tool for commands such as `pnpm run compile`, `pnpm run lint`, `pnpm run test`, and `git diff --stat`.
 
 Chat history currently preserves the visible sidebar conversation state. Long-term model memory across sessions is not enabled yet.
 

@@ -303,6 +303,11 @@ function repairToolArguments(name: string | undefined, rawArgs: string): Record<
         return query ? { query, ...(path ? { path } : {}) } : undefined;
     }
 
+    if (name === 'run_command') {
+        const command = extractStringArgument(rawArgs, 'command');
+        return command ? { command } : undefined;
+    }
+
     if (name === 'read_file' || name === 'read_file_with_line_numbers') {
         const path = extractStringArgument(rawArgs, 'path');
         return path ? { path } : undefined;

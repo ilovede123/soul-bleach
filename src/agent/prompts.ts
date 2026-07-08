@@ -19,7 +19,11 @@ export function createInitialMessages(): any[] {
                 '当需要修改已有文件时，优先使用 replace_range 进行小范围替换，不要随意使用 write_file 覆盖整个文件。',
                 '使用 replace_range 前，必须先确认 startLine、endLine 和 oldContent。oldContent 必须是最新读取到的原始内容。',
                 'read_file_with_line_numbers 返回的行号和竖线只用于定位，传给 replace_range 的 oldContent 不要包含行号和竖线。',
+                '每次 replace_range 成功后，必须立刻使用 read_file_with_line_numbers 重新读取修改后的行号范围，确认文件内容已经按预期改变。',
                 '如果需要连续多次 replace_range，每次替换后必须重新读取文件，不能继续使用旧行号。',
+                '当完成代码修改后，应根据项目脚本使用 run_command 执行验证，例如 corepack pnpm run compile、pnpm run lint、pnpm run test 或 git diff --stat。',
+                'run_command 只能用于验证和只读检查，不要尝试执行安装、删除、移动、提交、推送或其他高风险命令。',
+                '如果验证命令失败，先根据错误继续修正；如果无法修正，必须把失败命令和关键错误信息告诉用户。',
                 '如果工具返回错误，不要直接结束任务。先根据错误原因重新读取文件或修正参数，再继续执行。',
                 '只有在确实需要创建新文件或完整重写文件时，才使用 write_file。',
                 '任务完成后，用简洁的中文向用户总结你做了什么。'

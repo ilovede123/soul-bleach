@@ -4,6 +4,7 @@
  * 这里负责把模型看到的工具协议映射到本地文件能力，避免主循环里混入大量工具细节。
  */
 import { findFiles, listFiles, readFile, readFileWithLineNumbers, replaceRange, searchText, writeFile } from '../tool';
+import { runCommand } from './command';
 
 export const AGENT_TOOLS = [
     {
@@ -171,6 +172,23 @@ export const AGENT_TOOLS = [
                 required: ['path', 'startLine', 'endLine', 'oldContent', 'newContent']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'run_command',
+            description: '在当前工作区执行受限验证命令。只允许编译、测试、lint、build 和只读 git 命令，用于修改后的验证或查看差异。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    command: {
+                        type: 'string',
+                        description: '要执行的命令，例如 corepack pnpm run compile、pnpm run lint、git status --short、git diff --stat'
+                    }
+                },
+                required: ['command']
+            }
+        }
     }
 ];
 
@@ -201,6 +219,10 @@ export function executeAgentTool(name: string | undefined, args: Record<string, 
 
     if (name === 'replace_range') {
         return replaceRange(args.path, Number(args.startLine), Number(args.endLine), args.oldContent, args.newContent);
+    }
+
+    if (name === 'run_command') {
+        return runCommand(args.command);
     }
 
     return `Unknown tool: ${name ?? 'unknown'}`;
