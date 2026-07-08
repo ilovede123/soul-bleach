@@ -196,9 +196,9 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
 
     collectDebugLine(debugLines, trimmedLine, parsed);
 
-    const choice = parsed.choices?.[0] ?? parsed.data?.choices?.[0];
+    const choice = findFirstChoice(parsed);
     const delta = choice?.delta ?? choice?.message ?? parsed.message ?? parsed;
-    const content = normalizeContent(delta?.content ?? choice?.text ?? parsed.response);
+    const content = normalizeContent(delta?.content ?? delta?.text ?? choice?.text ?? parsed.response);
 
     if (content) {
         fullMessage.content += content;
@@ -262,10 +262,10 @@ function collectDebugLine(debugLines: string[] | undefined, line: string, parsed
         return;
     }
 
-    const choice = parsed?.choices?.[0] ?? parsed?.data?.choices?.[0];
+    const choice = findFirstChoice(parsed);
     const delta = choice?.delta ?? choice?.message ?? parsed?.message ?? parsed;
     const isUseful = !parsed
-        || normalizeContent(delta?.content ?? choice?.text ?? parsed?.response).length > 0
+        || normalizeContent(delta?.content ?? delta?.text ?? choice?.text ?? parsed?.response).length > 0
         || Boolean(delta?.tool_calls)
         || Boolean(delta?.function_call)
         || Boolean(choice?.finish_reason);
@@ -299,6 +299,25 @@ function normalizeContent(content: unknown): string {
     }
 
     return '';
+}
+
+function findFirstChoice(value: any): any {
+    if (!value || typeof value !== 'object') {
+        return undefined;
+    }
+
+    if (Array.isArray(value.choices) && value.choices.length > 0) {
+        return value.choices[0];
+    }
+
+    for (const item of Object.values(value)) {
+        const choice = findFirstChoice(item);
+        if (choice) {
+            return choice;
+        }
+    }
+
+    return undefined;
 }
 
 function resolveToolCallIndex(toolCalls: any[], toolCall: any): number {
