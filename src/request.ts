@@ -174,8 +174,6 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
         return;
     }
 
-    collectDebugLine(debugLines, trimmedLine);
-
     const jsonStr = trimmedLine.startsWith('data:')
         ? trimmedLine.replace(/^data:\s*/, '').trim()
         : trimmedLine;
@@ -192,10 +190,13 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     try {
         parsed = JSON.parse(jsonStr);
     } catch {
+        collectDebugLine(debugLines, trimmedLine);
         return;
     }
 
-    const choice = parsed.choices?.[0];
+    collectDebugLine(debugLines, trimmedLine, parsed);
+
+    const choice = parsed.choices?.[0] ?? parsed.data?.choices?.[0];
     const delta = choice?.delta ?? choice?.message ?? parsed.message ?? parsed;
     const content = normalizeContent(delta?.content ?? choice?.text ?? parsed.response);
 
@@ -256,8 +257,24 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     }
 }
 
-function collectDebugLine(debugLines: string[] | undefined, line: string) {
-    if (!debugLines || debugLines.length >= 5) {
+function collectDebugLine(debugLines: string[] | undefined, line: string, parsed?: any) {
+    if (!debugLines) {
+        return;
+    }
+
+    const choice = parsed?.choices?.[0] ?? parsed?.data?.choices?.[0];
+    const delta = choice?.delta ?? choice?.message ?? parsed?.message ?? parsed;
+    const isUseful = !parsed
+        || normalizeContent(delta?.content ?? choice?.text ?? parsed?.response).length > 0
+        || Boolean(delta?.tool_calls)
+        || Boolean(delta?.function_call)
+        || Boolean(choice?.finish_reason);
+
+    if (!isUseful && debugLines.length > 0) {
+        return;
+    }
+
+    if (debugLines.length >= 8) {
         return;
     }
 
