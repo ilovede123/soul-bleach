@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!--
+        author:dengwei date:2026-07-08
+        侧边栏面板页面，负责聊天消息、任务步骤、输入框和流式响应展示。
+    -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>灵境</title>
@@ -137,7 +141,7 @@
 
         #todo-panel {
             display: none;
-            padding: 8px 14px 4px;
+            padding: 10px 14px 8px;
             border-top: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
             background-color: var(--vscode-sidebar-background, #252526);
         }
@@ -145,41 +149,77 @@
             display: block;
         }
         .todo-title {
-            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.72));
-            font-size: 11px;
-            margin-bottom: 6px;
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.64));
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            margin-bottom: 8px;
+            text-transform: uppercase;
         }
         .todo-list {
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 3px;
+            padding-left: 6px;
+            border-left: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
         }
         .todo-item {
             display: flex;
             align-items: center;
-            gap: 7px;
-            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.72));
+            gap: 8px;
+            min-height: 24px;
+            padding: 3px 7px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.62));
             font-size: 12px;
-            line-height: 1.35;
+            line-height: 1.4;
+            transition: background-color 0.15s, border-color 0.15s, color 0.15s;
         }
         .todo-dot {
-            width: 8px;
-            height: 8px;
+            position: relative;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            border: 1px solid currentColor;
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.22));
             flex: 0 0 auto;
+            box-sizing: border-box;
         }
         .todo-item.in_progress {
-            color: var(--vscode-textLink-foreground, #3794ff);
+            color: var(--vscode-foreground, #cccccc);
+            background: rgba(255, 255, 255, 0.045);
+            border-color: var(--vscode-widget-border, rgba(255,255,255,0.1));
         }
         .todo-item.completed {
-            color: var(--vscode-testing-iconPassed, #73c991);
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.58));
         }
         .todo-item.in_progress .todo-dot {
-            background: currentColor;
+            border-color: var(--vscode-foreground, #cccccc);
+            border-top-color: transparent;
+            animation: todoSpin 0.9s linear infinite;
         }
         .todo-item.completed .todo-dot {
-            background: currentColor;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-color: var(--vscode-descriptionForeground, rgba(204,204,204,0.46));
+            background: transparent;
+        }
+        .todo-item.completed .todo-dot::after {
+            content: '';
+            width: 5px;
+            height: 3px;
+            border-left: 1.5px solid currentColor;
+            border-bottom: 1.5px solid currentColor;
+            transform: rotate(-45deg) translate(0, -1px);
+        }
+        .todo-item.completed .todo-text {
+            text-decoration: line-through;
+            text-decoration-thickness: 1px;
+            text-decoration-color: rgba(204,204,204,0.3);
+        }
+        @keyframes todoSpin {
+            to { transform: rotate(360deg); }
         }
 
         #input-container {
@@ -506,6 +546,7 @@
                 dot.className = 'todo-dot';
 
                 const title = document.createElement('span');
+                title.className = 'todo-text';
                 title.innerText = item.title;
 
                 row.appendChild(dot);
