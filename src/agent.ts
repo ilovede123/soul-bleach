@@ -1,7 +1,7 @@
 import { completion } from './request';
 import { findFiles, listFiles, readFileWithLineNumbers } from './tool';
 import { compactMessages } from './agent/context';
-import { createPlan, completeAllTodos, setActiveTodo } from './agent/planner';
+import { createPlan, completeAllTodos, setActiveTodo, shouldCreatePlan } from './agent/planner';
 import { createInitialMessages } from './agent/prompts';
 import { AGENT_TOOLS, executeAgentTool } from './agent/tools';
 import { ProgressHandler, TodoItem } from './agent/types';
@@ -25,8 +25,7 @@ export class AgentSession {
     }
 
     async run(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
-        const todos = await createPlan(task, signal);
-        setActiveTodo(todos, onProgress, 0);
+        const todos = await createTodosIfNeeded(task, signal, onProgress);
         this.messages.push({ role: 'user', content: task });
         const result = await runAgentLoop(this.messages, onChunk, signal, todos, onProgress);
         completeAllTodos(todos, onProgress);
@@ -41,12 +40,22 @@ export class AgentSession {
 
 export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
     const messages: any[] = createInitialMessages();
-    const todos = await createPlan(task, signal);
-    setActiveTodo(todos, onProgress, 0);
+    const todos = await createTodosIfNeeded(task, signal, onProgress);
     messages.push({ role: 'user', content: task });
     const result = await runAgentLoop(messages, onChunk, signal, todos, onProgress);
     completeAllTodos(todos, onProgress);
     return result;
+}
+
+async function createTodosIfNeeded(task: string, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<TodoItem[] | undefined> {
+    if (!shouldCreatePlan(task)) {
+        onProgress?.([]);
+        return undefined;
+    }
+
+    const todos = await createPlan(task, signal);
+    setActiveTodo(todos, onProgress, 0);
+    return todos;
 }
 
 async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, signal?: AbortSignal, todos?: TodoItem[], onProgress?: ProgressHandler): Promise<string> {

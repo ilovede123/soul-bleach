@@ -7,6 +7,20 @@ import { completion } from '../request';
 import { PLANNER_SYSTEM_PROMPT } from './prompts';
 import { ProgressHandler, TodoItem, TodoStatus } from './types';
 
+export function shouldCreatePlan(task: string): boolean {
+    const text = task.trim();
+
+    if (!text) {
+        return false;
+    }
+
+    if (isSimpleChat(text)) {
+        return false;
+    }
+
+    return isCodeOrFileTask(text) || isMultiStepTask(text) || text.length >= 80;
+}
+
 export async function createPlan(task: string, signal?: AbortSignal): Promise<TodoItem[]> {
     try {
         const message = await completion([
@@ -57,6 +71,18 @@ export function completeAllTodos(todos: TodoItem[] | undefined, onProgress: Prog
     }
 
     publishTodos(todos, onProgress);
+}
+
+function isSimpleChat(text: string): boolean {
+    return /^(你好|您好|hi|hello|hey|在吗|谢谢|多谢|好的|好|ok|嗯|明白|收到|可以|测试|test)[。！!.\s]*$/i.test(text);
+}
+
+function isCodeOrFileTask(text: string): boolean {
+    return /代码|文件|项目|目录|函数|变量|类型|组件|接口|报错|异常|bug|修复|修改|优化|重构|实现|新增|删除|替换|读取|查看|搜索|编译|测试|打包|提交|git|read|file|code|fix|update|implement|refactor|compile|test|build/i.test(text);
+}
+
+function isMultiStepTask(text: string): boolean {
+    return /先.*再|然后|接着|最后|步骤|计划|拆解|todo|待办|流程|方案|规划/i.test(text);
 }
 
 function parsePlan(content: string | undefined): TodoItem[] {
