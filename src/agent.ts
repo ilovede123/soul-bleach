@@ -1,29 +1,19 @@
 import { completion } from './request';
 import { findFiles, listFiles, readFileWithLineNumbers } from './tool';
-import { createInitialMessages, PLANNER_SYSTEM_PROMPT } from './agent/prompts';
+import { compactMessages } from './agent/context';
+import { createPlan, completeAllTodos, setActiveTodo } from './agent/planner';
+import { createInitialMessages } from './agent/prompts';
 import { AGENT_TOOLS, executeAgentTool } from './agent/tools';
+import { ProgressHandler, TodoItem } from './agent/types';
+
+export { TodoItem } from './agent/types';
 
 /**
  * author:dengwei date:2026-07-08
  * Agent 主流程入口。
- * 这里保留会话状态、模型循环、工具调用调度和上下文压缩逻辑，
- * 具体工具声明与提示词已经拆到独立模块，后续维护时优先从对应模块修改。
+ * 这里保留会话状态、模型循环和工具调用调度，
+ * 具体工具声明、提示词、任务规划和上下文压缩已经拆到独立模块。
  */
-type TodoStatus = 'pending' | 'in_progress' | 'completed';
-
-export type TodoItem = {
-    id: string;
-    title: string;
-    status: TodoStatus;
-};
-
-type ProgressHandler = (items: TodoItem[]) => void;
-
-const CONTEXT_SUMMARY_MARKER = '[Soul Bleach Context Summary]';
-const MAX_CONTEXT_MESSAGES = 42;
-const RECENT_CONTEXT_MESSAGES = 24;
-const MAX_SUMMARY_LENGTH = 6000;
-const MAX_MESSAGE_SNIPPET_LENGTH = 700;
 const LOCAL_FILE_RESULT_MARKER = '[Soul Bleach Local File Result]';
 const MAX_REPEATED_TOOL_ERRORS = 3;
 
@@ -261,210 +251,6 @@ function createEmptyResponseError(message: any): string {
         '下面是内网服务返回的原始片段，请按这个结构适配解析器：',
         ...samples.map((line: string, index: number) => `${index + 1}. ${line}`)
     ].join('\n');
-}
-
-async function createPlan(task: string, signal?: AbortSignal): Promise<TodoItem[]> {
-    try {
-        const message = await completion([
-            {
-                role: 'system',
-                content: PLANNER_SYSTEM_PROMPT
-            },
-            { role: 'user', content: task }
-        ], [], undefined, signal);
-
-        return parsePlan(message.content);
-    } catch {
-        return createFallbackTodos(task);
-    }
-}
-
-function parsePlan(content: string | undefined): TodoItem[] {
-    if (!content) {
-        throw new Error('Planner returned empty content.');
-    }
-
-    const jsonText = extractJsonObject(content);
-    const parsed = JSON.parse(jsonText);
-    const items = Array.isArray(parsed.todos) ? parsed.todos : [];
-    const todos = items
-        .map((item: any, index: number) => ({
-            id: `plan-${index + 1}`,
-            title: String(item.title ?? '').trim(),
-            status: 'pending' as TodoStatus
-        }))
-        .filter((item: TodoItem) => item.title.length > 0)
-        .slice(0, 6);
-
-    if (todos.length === 0) {
-        throw new Error('Planner returned no todo items.');
-    }
-
-    return todos;
-}
-
-function extractJsonObject(content: string): string {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) {
-        throw new Error('Planner response did not contain JSON.');
-    }
-
-    return match[0];
-}
-
-function createFallbackTodos(task: string): TodoItem[] {
-    const isEditTask = /修改|写入|替换|加上|删除|优化|重构|实现|修复|edit|write|fix|update/i.test(task);
-
-    return [
-        { id: 'understand', title: '理解需求并拆解任务', status: 'pending' },
-        { id: 'context', title: '定位相关文件和上下文', status: 'pending' },
-        { id: 'work', title: isEditTask ? '执行代码修改' : '读取信息并整理结论', status: 'pending' },
-        { id: 'summary', title: '总结结果并给出下一步', status: 'pending' }
-    ];
-}
-
-function setActiveTodo(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined, activeIndex: number) {
-    if (!todos || !onProgress) {
-        return;
-    }
-
-    if (todos.length === 0) {
-        return;
-    }
-
-    const safeIndex = Math.max(0, Math.min(activeIndex, todos.length - 1));
-
-    for (let index = 0; index < todos.length; index++) {
-        if (index < safeIndex) {
-            todos[index] = { ...todos[index], status: 'completed' };
-        } else if (index === safeIndex) {
-            todos[index] = { ...todos[index], status: 'in_progress' };
-        } else {
-            todos[index] = { ...todos[index], status: 'pending' };
-        }
-    }
-
-    publishTodos(todos, onProgress);
-}
-
-function completeAllTodos(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined) {
-    if (!todos || !onProgress) {
-        return;
-    }
-
-    for (let index = 0; index < todos.length; index++) {
-        todos[index] = { ...todos[index], status: 'completed' };
-    }
-
-    publishTodos(todos, onProgress);
-}
-
-function publishTodos(todos: TodoItem[], onProgress: ProgressHandler) {
-    onProgress(todos.map(item => ({ ...item })));
-}
-
-function compactMessages(messages: any[]): any[] {
-    if (messages.length <= MAX_CONTEXT_MESSAGES) {
-        return messages;
-    }
-
-    const systemMessage = messages[0];
-    const recentStart = findRecentStart(messages);
-    const previousSummary = extractExistingSummary(messages);
-    const oldMessages = messages
-        .slice(1, recentStart)
-        .filter(message => !isContextSummary(message));
-    const summary = buildContextSummary(previousSummary, oldMessages);
-    const recentMessages = messages.slice(recentStart);
-
-    return [
-        systemMessage,
-        {
-            role: 'system',
-            content: `${CONTEXT_SUMMARY_MARKER}\n${summary}`
-        },
-        ...recentMessages
-    ];
-}
-
-function findRecentStart(messages: any[]): number {
-    let start = Math.max(1, messages.length - RECENT_CONTEXT_MESSAGES);
-
-    while (start < messages.length && messages[start]?.role === 'tool') {
-        start++;
-    }
-
-    return start;
-}
-
-function extractExistingSummary(messages: any[]): string {
-    const summaryMessage = messages.find(isContextSummary);
-    if (!summaryMessage?.content) {
-        return '';
-    }
-
-    return String(summaryMessage.content).replace(CONTEXT_SUMMARY_MARKER, '').trim();
-}
-
-function isContextSummary(message: any): boolean {
-    return message?.role === 'system' && typeof message.content === 'string' && message.content.startsWith(CONTEXT_SUMMARY_MARKER);
-}
-
-function buildContextSummary(previousSummary: string, messages: any[]): string {
-    const parts: string[] = [];
-
-    if (previousSummary) {
-        parts.push(previousSummary);
-    }
-
-    for (const message of messages) {
-        const summaryLine = summarizeMessage(message);
-        if (summaryLine) {
-            parts.push(summaryLine);
-        }
-    }
-
-    return truncateText(parts.join('\n'), MAX_SUMMARY_LENGTH);
-}
-
-function summarizeMessage(message: any): string {
-    if (message.role === 'user') {
-        return `用户需求: ${truncateText(message.content, MAX_MESSAGE_SNIPPET_LENGTH)}`;
-    }
-
-    if (message.role === 'assistant') {
-        const lines: string[] = [];
-
-        if (message.content) {
-            lines.push(`助手回复: ${truncateText(message.content, MAX_MESSAGE_SNIPPET_LENGTH)}`);
-        }
-
-        if (message.tool_calls?.length) {
-            for (const toolCall of message.tool_calls) {
-                const name = toolCall.function?.name ?? 'unknown';
-                const args = truncateText(toolCall.function?.arguments ?? '', 400);
-                lines.push(`工具调用: ${name}(${args})`);
-            }
-        }
-
-        return lines.join('\n');
-    }
-
-    if (message.role === 'tool') {
-        return `工具结果: ${truncateText(message.content, MAX_MESSAGE_SNIPPET_LENGTH)}`;
-    }
-
-    return '';
-}
-
-function truncateText(value: unknown, maxLength: number): string {
-    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
-
-    if (text.length <= maxLength) {
-        return text;
-    }
-
-    return `${text.slice(0, maxLength)}...`;
 }
 
 function throwIfAborted(signal?: AbortSignal) {
