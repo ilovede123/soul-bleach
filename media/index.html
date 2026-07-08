@@ -149,12 +149,21 @@
             display: block;
         }
         .todo-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             color: var(--vscode-descriptionForeground, rgba(204,204,204,0.64));
             font-size: 10px;
             font-weight: 600;
             letter-spacing: 0.04em;
             margin-bottom: 8px;
             text-transform: uppercase;
+        }
+        .todo-count {
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.48));
+            font-weight: 500;
+            letter-spacing: 0;
+            text-transform: none;
         }
         .todo-list {
             display: flex;
@@ -164,6 +173,7 @@
             border-left: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
         }
         .todo-item {
+            position: relative;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -194,9 +204,12 @@
             color: var(--vscode-descriptionForeground, rgba(204,204,204,0.58));
         }
         .todo-item.in_progress .todo-dot {
+            width: 13px;
+            height: 13px;
             border-color: var(--vscode-foreground, #cccccc);
             border-top-color: transparent;
-            animation: todoSpin 0.9s linear infinite;
+            animation: todoSpin 0.85s linear infinite;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.025);
         }
         .todo-item.completed .todo-dot {
             display: inline-flex;
@@ -217,6 +230,22 @@
             text-decoration: line-through;
             text-decoration-thickness: 1px;
             text-decoration-color: rgba(204,204,204,0.3);
+        }
+        .todo-text {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .todo-state {
+            flex: 0 0 auto;
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.48));
+            font-size: 10px;
+            line-height: 1;
+        }
+        .todo-item.in_progress .todo-state {
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.72));
         }
         @keyframes todoSpin {
             to { transform: rotate(360deg); }
@@ -364,7 +393,10 @@
     </div>
 
     <div id="todo-panel">
-        <div class="todo-title">执行步骤</div>
+        <div class="todo-title">
+            <span>任务拆解</span>
+            <span id="todo-count" class="todo-count"></span>
+        </div>
         <div id="todo-list" class="todo-list"></div>
     </div>
 
@@ -395,6 +427,7 @@
         const clearBtn = document.getElementById('clear-btn');
         const todoPanel = document.getElementById('todo-panel');
         const todoList = document.getElementById('todo-list');
+        const todoCount = document.getElementById('todo-count');
         const MAX_HISTORY_ITEMS = 100;
         const sendIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M24 0l-6 22-5-9-11-5zM13 13l4-8-8 6zm-2 2v7l3-4z"/></svg>';
         const stopIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>';
@@ -530,6 +563,7 @@
 
         function renderTodos(items) {
             todoList.innerHTML = '';
+            todoCount.innerText = '';
 
             if (!items || items.length === 0) {
                 todoPanel.classList.remove('visible');
@@ -537,6 +571,8 @@
             }
 
             todoPanel.classList.add('visible');
+            const completedCount = items.filter(item => item.status === 'completed').length;
+            todoCount.innerText = `${completedCount}/${items.length}`;
 
             for (const item of items) {
                 const row = document.createElement('div');
@@ -549,10 +585,27 @@
                 title.className = 'todo-text';
                 title.innerText = item.title;
 
+                const state = document.createElement('span');
+                state.className = 'todo-state';
+                state.innerText = getTodoStateText(item.status);
+
                 row.appendChild(dot);
                 row.appendChild(title);
+                row.appendChild(state);
                 todoList.appendChild(row);
             }
+        }
+
+        function getTodoStateText(status) {
+            if (status === 'completed') {
+                return '完成';
+            }
+
+            if (status === 'in_progress') {
+                return '正在执行';
+            }
+
+            return '等待';
         }
 
         function ensureAgentBubble() {
