@@ -144,6 +144,24 @@
             display: inline-block;
             animation: waitingPulse 1.2s ease-in-out infinite;
         }
+        .reasoning-block {
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.58));
+            border-left: 2px solid var(--vscode-widget-border, rgba(255,255,255,0.14));
+            margin-bottom: 10px;
+            padding-left: 10px;
+            font-size: 12px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+        .reasoning-title {
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.48));
+            font-size: 10px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .answer-block:empty {
+            display: none;
+        }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         @keyframes waitingPulse {
             0%, 100% { opacity: 0.35; }
@@ -445,6 +463,8 @@
 
         let currentActiveBubble = null;
         let accumulatedText = "";
+        let accumulatedReasoning = "";
+        let hasReasoningSignal = false;
         let chatHistory = vscode.getState()?.chatHistory ?? [];
         let isGenerating = false;
         let isShowingThinking = false;
@@ -490,6 +510,9 @@
             appendMessage('user', text, true);
             textarea.value = '';
             textarea.style.height = '38px';
+            accumulatedText = "";
+            accumulatedReasoning = "";
+            hasReasoningSignal = false;
             setGenerating(true);
             renderTodos([]);
             showWaitingBubble();
@@ -660,6 +683,8 @@
 
             chatHistory = [];
             accumulatedText = "";
+            accumulatedReasoning = "";
+            hasReasoningSignal = false;
             currentActiveBubble = null;
             saveHistory();
             vscode.postMessage({ command: 'clear-history' });
@@ -683,6 +708,8 @@
             if (msg.command === 'stream-start') {
                 setGenerating(true);
                 accumulatedText = "";
+                accumulatedReasoning = "";
+                hasReasoningSignal = false;
                 isShowingThinking = false;
                 showWaitingBubble();
             } 
@@ -690,10 +717,22 @@
                 renderTodos(msg.items);
             }
             else if (msg.command === 'stream-chunk') {
+                if (typeof msg.text === 'string' && msg.text.startsWith('__SOUL_BLEACH_REASONING__')) {
+                    ensureAgentBubble();
+                    clearWaitingBubble();
+                    isShowingThinking = true;
+                    hasReasoningSignal = true;
+                    accumulatedReasoning += msg.text.slice('__SOUL_BLEACH_REASONING__'.length);
+                    renderActiveAgentBubble();
+                    scroller.scrollTop = scroller.scrollHeight;
+                    return;
+                }
+
                 if (msg.text === '__SOUL_BLEACH_THINKING__') {
                     ensureAgentBubble();
                     isShowingThinking = true;
-                    currentActiveBubble.innerText = '思考中...';
+                    hasReasoningSignal = true;
+                    renderActiveAgentBubble();
                     scroller.scrollTop = scroller.scrollHeight;
                     return;
                 }
@@ -707,7 +746,7 @@
                 }
 
                 accumulatedText += msg.text;
-                currentActiveBubble.innerHTML = SimpleMarked.parse(accumulatedText);
+                renderActiveAgentBubble();
                 scroller.scrollTop = scroller.scrollHeight;
             } 
             else if (msg.command === 'stream-end') {
@@ -719,11 +758,32 @@
                         saveHistory();
                     }
                     accumulatedText = "";
+                    accumulatedReasoning = "";
+                    hasReasoningSignal = false;
                     isShowingThinking = false;
                 }
                 setGenerating(false);
             }
         });
+
+        function renderActiveAgentBubble() {
+            const parts = [];
+
+            if (hasReasoningSignal || accumulatedReasoning.trim().length > 0) {
+                const reasoningHtml = accumulatedReasoning.trim().length > 0
+                    ? escapeHtml(accumulatedReasoning).trim()
+                    : '<span class="waiting-text">思考中...</span>';
+                parts.push([
+                    '<div class="reasoning-block">',
+                    '<div class="reasoning-title">思考过程</div>',
+                    reasoningHtml,
+                    '</div>'
+                ].join(''));
+            }
+
+            parts.push(`<div class="answer-block">${SimpleMarked.parse(accumulatedText)}</div>`);
+            currentActiveBubble.innerHTML = parts.join('');
+        }
     </script>
 </body>
 </html>

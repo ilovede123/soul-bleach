@@ -221,10 +221,17 @@ function createThinkFilter(onChunk?: (text: string) => void) {
                     const thinkEnd = buffer.indexOf('</think>');
                     if (thinkEnd === -1) {
                         const keepLength = Math.min(buffer.length, '</think>'.length - 1);
-                        buffer = buffer.slice(Math.max(0, buffer.length - keepLength));
+                        const emitLength = buffer.length - keepLength;
+                        if (emitLength > 0) {
+                            onChunk?.(`__SOUL_BLEACH_REASONING__${buffer.slice(0, emitLength)}`);
+                            buffer = buffer.slice(emitLength);
+                        }
                         return;
                     }
 
+                    if (thinkEnd > 0) {
+                        onChunk?.(`__SOUL_BLEACH_REASONING__${buffer.slice(0, thinkEnd)}`);
+                    }
                     buffer = buffer.slice(thinkEnd + '</think>'.length);
                     isThinking = false;
                     continue;
@@ -319,6 +326,7 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
 
     if (delta?.reasoning_content) {
         onChunk?.('__SOUL_BLEACH_THINKING__');
+        onChunk?.(`__SOUL_BLEACH_REASONING__${normalizeContent(delta.reasoning_content)}`);
     }
 
     if (delta?.function_call) {
