@@ -162,12 +162,20 @@ function createAbortError(): Error {
 }
 
 function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) => void) {
-    if (!line.startsWith('data: ')) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
         return;
     }
 
-    const jsonStr = line.slice(6).trim();
+    const jsonStr = trimmedLine.startsWith('data:')
+        ? trimmedLine.replace(/^data:\s*/, '').trim()
+        : trimmedLine;
+
     if (!jsonStr || jsonStr === '[DONE]') {
+        return;
+    }
+
+    if (!jsonStr.startsWith('{')) {
         return;
     }
 

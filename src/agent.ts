@@ -232,7 +232,7 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
 
         if (!message.tool_calls || message.tool_calls.length === 0) {
             if (!message.content) {
-                throw new Error('模型没有返回可显示内容，也没有返回工具调用。请检查内网模型的流式响应格式。');
+                throw new Error('模型没有返回可显示内容，也没有返回工具调用。请检查内网模型是否使用 OpenAI-compatible 流式格式，例如 data: {...}、choices[0].delta.content 或 choices[0].delta.tool_calls。');
             }
 
             updateTodos(todos, onProgress, 'context', 'completed');
