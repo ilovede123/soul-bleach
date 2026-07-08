@@ -434,6 +434,26 @@
             scroller.appendChild(row);
         }
 
+        function ensureAgentBubble() {
+            if (currentActiveBubble) {
+                return;
+            }
+
+            const row = document.createElement('div');
+            row.className = 'message-row agent';
+
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.innerText = '灵境';
+
+            currentActiveBubble = document.createElement('div');
+            currentActiveBubble.className = 'message-bubble streaming-active';
+
+            row.appendChild(label);
+            row.appendChild(currentActiveBubble);
+            scroller.appendChild(row);
+        }
+
         function clearChat() {
             if (isGenerating) {
                 vscode.postMessage({ command: 'stop-generation' });
@@ -463,38 +483,26 @@
                 setGenerating(true);
                 accumulatedText = "";
                 isShowingThinking = false;
-                const row = document.createElement('div');
-                row.className = 'message-row agent';
-                
-                const label = document.createElement('div');
-                label.className = 'message-label';
-                label.innerText = '灵境';
-
-                currentActiveBubble = document.createElement('div');
-                currentActiveBubble.className = 'message-bubble streaming-active';
-
-                row.appendChild(label);
-                row.appendChild(currentActiveBubble);
-                scroller.appendChild(row);
             } 
             else if (msg.command === 'stream-chunk') {
-                if (currentActiveBubble) {
-                    if (msg.text === '__SOUL_BLEACH_THINKING__') {
-                        isShowingThinking = true;
-                        currentActiveBubble.innerText = '思考中...';
-                        scroller.scrollTop = scroller.scrollHeight;
-                        return;
-                    }
-
-                    if (isShowingThinking && accumulatedText.length === 0) {
-                        isShowingThinking = false;
-                        currentActiveBubble.innerHTML = '';
-                    }
-
-                    accumulatedText += msg.text;
-                    currentActiveBubble.innerHTML = SimpleMarked.parse(accumulatedText);
+                if (msg.text === '__SOUL_BLEACH_THINKING__') {
+                    ensureAgentBubble();
+                    isShowingThinking = true;
+                    currentActiveBubble.innerText = '思考中...';
                     scroller.scrollTop = scroller.scrollHeight;
+                    return;
                 }
+
+                ensureAgentBubble();
+
+                if (isShowingThinking && accumulatedText.length === 0) {
+                    isShowingThinking = false;
+                    currentActiveBubble.innerHTML = '';
+                }
+
+                accumulatedText += msg.text;
+                currentActiveBubble.innerHTML = SimpleMarked.parse(accumulatedText);
+                scroller.scrollTop = scroller.scrollHeight;
             } 
             else if (msg.command === 'stream-end') {
                 if (currentActiveBubble) {

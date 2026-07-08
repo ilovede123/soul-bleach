@@ -180,6 +180,10 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
         messages.push(message);
 
         if (!message.tool_calls || message.tool_calls.length === 0) {
+            if (!message.content) {
+                throw new Error('模型没有返回可显示内容，也没有返回工具调用。请检查内网模型的流式响应格式。');
+            }
+
             return message.content ?? '';
         }
 

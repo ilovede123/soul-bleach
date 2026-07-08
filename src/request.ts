@@ -179,7 +179,7 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     }
 
     const choice = parsed.choices?.[0];
-    const delta = choice?.delta;
+    const delta = choice?.delta ?? choice?.message;
 
     if (delta?.content) {
         fullMessage.content += delta.content;
@@ -194,7 +194,7 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
         fullMessage.tool_calls ??= [];
 
         for (const tc of delta.tool_calls) {
-            const index = tc.index ?? fullMessage.tool_calls.length;
+            const index = resolveToolCallIndex(fullMessage.tool_calls, tc);
 
             fullMessage.tool_calls[index] ??= {
                 id: tc.id,
@@ -210,8 +210,8 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
                 fullMessage.tool_calls[index].function.name = tc.function.name;
             }
 
-            if (tc.function?.arguments) {
-                fullMessage.tool_calls[index].function.arguments += tc.function.arguments;
+            if (tc.function?.arguments !== undefined) {
+                fullMessage.tool_calls[index].function.arguments += stringifyToolArguments(tc.function.arguments);
             }
         }
     }
@@ -219,4 +219,27 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     if (choice?.finish_reason) {
         fullMessage.finish_reason = choice.finish_reason;
     }
+}
+
+function resolveToolCallIndex(toolCalls: any[], toolCall: any): number {
+    if (typeof toolCall.index === 'number') {
+        return toolCall.index;
+    }
+
+    if (toolCall.id) {
+        const existingIndex = toolCalls.findIndex(item => item?.id === toolCall.id);
+        if (existingIndex !== -1) {
+            return existingIndex;
+        }
+    }
+
+    if (!toolCall.function?.name && toolCalls.length > 0) {
+        return toolCalls.length - 1;
+    }
+
+    return toolCalls.length;
+}
+
+function stringifyToolArguments(args: unknown): string {
+    return typeof args === 'string' ? args : JSON.stringify(args);
 }
