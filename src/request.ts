@@ -1,15 +1,43 @@
 import * as vscode from "vscode";
 
+/**
+ * author:dengwei date:2026-07-08
+ * 模型请求配置统一入口。
+ * provider 用来选择常见厂商的默认接口，baseUrl 和 model 保留手动覆盖能力，
+ * 这样同一套 Agent 逻辑可以在千问、智谱和内网 OpenAI-compatible 服务之间切换。
+ */
+type ModelProvider = 'qwen' | 'zhipu' | 'custom';
+
+const PROVIDER_PRESETS: Record<ModelProvider, { baseUrl: string; model: string; extraBody?: Record<string, unknown> }> = {
+    qwen: {
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+        model: 'qwen3.7-plus',
+        extraBody: {
+            enable_thinking: false
+        }
+    },
+    zhipu: {
+        baseUrl: 'https://api.z.ai/api/paas/v4/chat/completions',
+        model: 'glm-5.2'
+    },
+    custom: {
+        baseUrl: '',
+        model: ''
+    }
+};
+
 export function getConfig() {
     const config = vscode.workspace.getConfiguration('soul-bleach');
-    const baseUrl = config.get<string>('baseUrl', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions');
+    const provider = config.get<ModelProvider>('provider', 'qwen');
+    const preset = PROVIDER_PRESETS[provider] ?? PROVIDER_PRESETS.qwen;
+    const baseUrl = config.get<string>('baseUrl', '') || preset.baseUrl;
     const apiKey = config.get<string>('apiKey', '');
-    const model = config.get<string>('model');
-    return { baseUrl, apiKey, model };
+    const model = config.get<string>('model', '') || preset.model;
+    return { provider, baseUrl, apiKey, model, extraBody: preset.extraBody ?? {} };
 }
 
 export async function completion(messages: any[], tools: any[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<any> {
-    const { baseUrl, apiKey, model } = getConfig();
+    const { baseUrl, apiKey, model, extraBody } = getConfig();
     const headers: Record<string, string> = {
         'Content-Type': 'application/json'
     };
@@ -18,11 +46,19 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
         headers.Authorization = `Bearer ${apiKey}`;
     }
 
+    if (!baseUrl) {
+        throw new Error('模型接口地址为空，请在设置中选择 provider 或填写 baseUrl。');
+    }
+
+    if (!model) {
+        throw new Error('模型名称为空，请在设置中选择 provider 或填写 model。');
+    }
+
     const body: Record<string, unknown> = {
         model,
         messages,
         stream: true,
-        enable_thinking: false
+        ...extraBody
     };
 
     if (tools.length > 0) {

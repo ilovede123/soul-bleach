@@ -47,10 +47,25 @@
     "configuration": {
       "title": "灵境",
       "properties": {
+        "soul-bleach.provider": {
+          "type": "string",
+          "default": "qwen",
+          "enum": [
+            "qwen",
+            "zhipu",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "阿里云百炼 DashScope OpenAI-compatible 接口",
+            "智谱 Z.AI OpenAI-compatible 接口",
+            "自定义 OpenAI-compatible 接口，例如内网模型服务"
+          ],
+          "description": "模型服务商。选择 qwen 或 zhipu 时会自动使用对应默认接口和模型；baseUrl/model 填写后会覆盖默认值"
+        },
         "soul-bleach.baseUrl": {
           "type": "string",
-          "default": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-          "description": ""
+          "default": "",
+          "description": "Chat Completions 完整接口地址。留空时使用 provider 的默认地址；自定义内网模型时填写类似 http://host:port/v1/chat/completions"
         },
         "soul-bleach.apiKey": {
           "type": "string",
@@ -59,8 +74,8 @@
         },
         "soul-bleach.model": {
           "type": "string",
-          "default": "qwen3.7-plus",
-          "description": "模型名称，例如 qwen3.7-plus、qwen3-8b"
+          "default": "",
+          "description": "模型名称。留空时使用 provider 的默认模型，例如 qwen-plus 或 glm-5.2"
         }
       }
     }
