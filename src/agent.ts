@@ -232,7 +232,7 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
 
         if (!message.tool_calls || message.tool_calls.length === 0) {
             if (!message.content) {
-                throw new Error('模型没有返回可显示内容，也没有返回工具调用。请检查内网模型是否使用 OpenAI-compatible 流式格式，例如 data: {...}、choices[0].delta.content 或 choices[0].delta.tool_calls。');
+                throw new Error(createEmptyResponseError(message));
             }
 
             updateTodos(todos, onProgress, 'context', 'completed');
@@ -266,6 +266,20 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
     }
 
     throw new Error('Agent stopped because it exceeded the maximum iteration count.');
+}
+
+function createEmptyResponseError(message: any): string {
+    const samples = message.debug?.samples;
+
+    if (!samples?.length) {
+        return '模型没有返回可显示内容，也没有返回工具调用。请检查内网模型是否使用 OpenAI-compatible 流式格式，例如 data: {...}、choices[0].delta.content 或 choices[0].delta.tool_calls。';
+    }
+
+    return [
+        '模型响应已收到，但没有解析出 content 或 tool_calls。',
+        '下面是内网服务返回的原始片段，请按这个结构适配解析器：',
+        ...samples.map((line: string, index: number) => `${index + 1}. ${line}`)
+    ].join('\n');
 }
 
 function createTodos(task: string): TodoItem[] {

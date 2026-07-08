@@ -45,6 +45,7 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
     const decoder = new TextDecoder();
 
     const fullMessage: any = { role: 'assistant', content: '' };
+    const debugLines: string[] = [];
     const thinkFilter = createThinkFilter(onChunk);
 
     // SSE 可能从任意位置断开，先缓存半行，等下一块数据补齐后再解析。
@@ -66,13 +67,13 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-            parseSseLine(line, fullMessage, thinkFilter.handleText);
+            parseSseLine(line, fullMessage, thinkFilter.handleText, debugLines);
         }
     }
 
     buffer += decoder.decode();
     if (buffer) {
-        parseSseLine(buffer, fullMessage, thinkFilter.handleText);
+        parseSseLine(buffer, fullMessage, thinkFilter.handleText, debugLines);
     }
     thinkFilter.flush();
 
@@ -80,6 +81,12 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
         delete fullMessage.content;
     } else {
         fullMessage.content = stripThinkBlocks(fullMessage.content);
+    }
+
+    if (!fullMessage.content && !fullMessage.tool_calls?.length && debugLines.length > 0) {
+        fullMessage.debug = {
+            samples: debugLines
+        };
     }
 
     return fullMessage;
@@ -161,11 +168,13 @@ function createAbortError(): Error {
     return error;
 }
 
-function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) => void) {
+function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) => void, debugLines?: string[]) {
     const trimmedLine = line.trim();
     if (!trimmedLine) {
         return;
     }
+
+    collectDebugLine(debugLines, trimmedLine);
 
     const jsonStr = trimmedLine.startsWith('data:')
         ? trimmedLine.replace(/^data:\s*/, '').trim()
@@ -187,15 +196,33 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     }
 
     const choice = parsed.choices?.[0];
-    const delta = choice?.delta ?? choice?.message;
+    const delta = choice?.delta ?? choice?.message ?? parsed.message ?? parsed;
+    const content = normalizeContent(delta?.content ?? choice?.text ?? parsed.response);
 
-    if (delta?.content) {
-        fullMessage.content += delta.content;
-        onChunk?.(delta.content);
+    if (content) {
+        fullMessage.content += content;
+        onChunk?.(content);
     }
 
     if (delta?.reasoning_content) {
         onChunk?.('__SOUL_BLEACH_THINKING__');
+    }
+
+    if (delta?.function_call) {
+        fullMessage.tool_calls ??= [];
+        fullMessage.tool_calls[0] ??= {
+            id: 'legacy_function_call',
+            type: 'function',
+            function: { name: delta.function_call.name, arguments: '' }
+        };
+
+        if (delta.function_call.name) {
+            fullMessage.tool_calls[0].function.name = delta.function_call.name;
+        }
+
+        if (delta.function_call.arguments !== undefined) {
+            fullMessage.tool_calls[0].function.arguments += stringifyToolArguments(delta.function_call.arguments);
+        }
     }
 
     if (delta?.tool_calls) {
@@ -227,6 +254,34 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     if (choice?.finish_reason) {
         fullMessage.finish_reason = choice.finish_reason;
     }
+}
+
+function collectDebugLine(debugLines: string[] | undefined, line: string) {
+    if (!debugLines || debugLines.length >= 5) {
+        return;
+    }
+
+    debugLines.push(line.slice(0, 800));
+}
+
+function normalizeContent(content: unknown): string {
+    if (typeof content === 'string') {
+        return content;
+    }
+
+    if (Array.isArray(content)) {
+        return content
+            .map(item => {
+                if (typeof item === 'string') {
+                    return item;
+                }
+
+                return item?.text ?? item?.content ?? '';
+            })
+            .join('');
+    }
+
+    return '';
 }
 
 function resolveToolCallIndex(toolCalls: any[], toolCall: any): number {
