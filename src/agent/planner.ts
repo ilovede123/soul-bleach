@@ -61,6 +61,24 @@ export function setActiveTodo(todos: TodoItem[] | undefined, onProgress: Progres
     publishTodos(todos, onProgress);
 }
 
+export function setActiveTodoByTool(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined, toolName: string | undefined) {
+    if (!todos?.length) {
+        return;
+    }
+
+    const currentIndex = Math.max(0, todos.findIndex(item => item.status === 'in_progress'));
+    const nextIndex = getTodoIndexForTool(todos, toolName);
+    setActiveTodo(todos, onProgress, Math.max(currentIndex, nextIndex));
+}
+
+export function setFinalTodo(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined) {
+    if (!todos?.length) {
+        return;
+    }
+
+    setActiveTodo(todos, onProgress, todos.length - 1);
+}
+
 export function completeAllTodos(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined) {
     if (!todos || !onProgress) {
         return;
@@ -71,6 +89,30 @@ export function completeAllTodos(todos: TodoItem[] | undefined, onProgress: Prog
     }
 
     publishTodos(todos, onProgress);
+}
+
+function getTodoIndexForTool(todos: TodoItem[], toolName: string | undefined): number {
+    const normalizedToolName = String(toolName ?? '');
+    const titles = todos.map(item => item.title);
+
+    if (/list_files|find_files|search_text|read_file|read_file_with_line_numbers/.test(normalizedToolName)) {
+        return findFirstTodoIndex(titles, /定位|查找|搜索|读取|查看|上下文|分析|理解/) ?? 0;
+    }
+
+    if (/replace_range|write_file/.test(normalizedToolName)) {
+        return findFirstTodoIndex(titles, /修改|写入|替换|实现|更新|执行|代码/) ?? Math.min(1, todos.length - 1);
+    }
+
+    if (/run_command/.test(normalizedToolName)) {
+        return findFirstTodoIndex(titles, /验证|检查|编译|测试|lint|运行|确认/) ?? Math.max(0, todos.length - 2);
+    }
+
+    return Math.max(0, todos.findIndex(item => item.status === 'in_progress'));
+}
+
+function findFirstTodoIndex(titles: string[], pattern: RegExp): number | undefined {
+    const index = titles.findIndex(title => pattern.test(title));
+    return index >= 0 ? index : undefined;
 }
 
 function isSimpleChat(text: string): boolean {

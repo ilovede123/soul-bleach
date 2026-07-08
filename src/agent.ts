@@ -1,7 +1,7 @@
 import { completion } from './request';
 import { findFiles, listFiles, readFileWithLineNumbers } from './tool';
 import { compactMessages } from './agent/context';
-import { createPlan, completeAllTodos, setActiveTodo, shouldCreatePlan } from './agent/planner';
+import { createPlan, completeAllTodos, setActiveTodo, setActiveTodoByTool, setFinalTodo, shouldCreatePlan } from './agent/planner';
 import { createInitialMessages } from './agent/prompts';
 import { AGENT_TOOLS, executeAgentTool } from './agent/tools';
 import { ProgressHandler, TodoItem } from './agent/types';
@@ -66,7 +66,6 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
     for (let i = 0; i < maxIterations; i++) {
         throwIfAborted(signal);
 
-        setActiveTodo(todos, onProgress, Math.min(i + 1, Math.max(0, (todos?.length ?? 1) - 2)));
         const message = await completion(messages, AGENT_TOOLS, onChunk, signal);
         messages.push(message);
 
@@ -92,11 +91,9 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                 continue;
             }
 
-            setActiveTodo(todos, onProgress, Math.max(0, (todos?.length ?? 1) - 1));
+            setFinalTodo(todos, onProgress);
             return message.content ?? '';
         }
-
-        setActiveTodo(todos, onProgress, Math.min(i + 2, Math.max(0, (todos?.length ?? 1) - 2)));
 
         for (const toolCall of message.tool_calls) {
             throwIfAborted(signal);
@@ -106,6 +103,7 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
             let result: string;
 
             try {
+                setActiveTodoByTool(todos, onProgress, name);
                 const args = parseToolArguments(name, rawArgs);
                 if (toolCall.function) {
 
@@ -128,7 +126,7 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
             });
 
             if (repeatedToolErrors >= MAX_REPEATED_TOOL_ERRORS) {
-                setActiveTodo(todos, onProgress, Math.max(0, (todos?.length ?? 1) - 1));
+                setFinalTodo(todos, onProgress);
                 return [
                     '任务已停止：同一个工具错误连续出现，继续重试会导致循环。',
                     '',
@@ -140,7 +138,7 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
         }
     }
 
-    setActiveTodo(todos, onProgress, Math.max(0, (todos?.length ?? 1) - 1));
+    setFinalTodo(todos, onProgress);
     return [
         '任务已停止：执行轮次达到上限，未能稳定完成。',
         '通常原因是模型反复调用工具但没有根据工具结果修正参数。',
