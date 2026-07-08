@@ -135,6 +135,53 @@
         }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
+        #todo-panel {
+            display: none;
+            padding: 8px 14px 4px;
+            border-top: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+            background-color: var(--vscode-sidebar-background, #252526);
+        }
+        #todo-panel.visible {
+            display: block;
+        }
+        .todo-title {
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.72));
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+        .todo-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .todo-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.72));
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .todo-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1px solid currentColor;
+            flex: 0 0 auto;
+        }
+        .todo-item.in_progress {
+            color: var(--vscode-textLink-foreground, #3794ff);
+        }
+        .todo-item.completed {
+            color: var(--vscode-testing-iconPassed, #73c991);
+        }
+        .todo-item.in_progress .todo-dot {
+            background: currentColor;
+        }
+        .todo-item.completed .todo-dot {
+            background: currentColor;
+        }
+
         #input-container {
             padding: 10px 14px 12px;
             background-color: var(--vscode-sidebar-background, #252526);
@@ -276,6 +323,11 @@
         </div>
     </div>
 
+    <div id="todo-panel">
+        <div class="todo-title">执行步骤</div>
+        <div id="todo-list" class="todo-list"></div>
+    </div>
+
     <div id="input-container">
         <div class="input-toolbar">
             <button id="clear-btn" title="清空聊天记录">
@@ -301,6 +353,8 @@
         const textarea = document.getElementById('user-textarea');
         const sendBtn = document.getElementById('send-btn');
         const clearBtn = document.getElementById('clear-btn');
+        const todoPanel = document.getElementById('todo-panel');
+        const todoList = document.getElementById('todo-list');
         const MAX_HISTORY_ITEMS = 100;
         const sendIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M24 0l-6 22-5-9-11-5zM13 13l4-8-8 6zm-2 2v7l3-4z"/></svg>';
         const stopIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>';
@@ -434,6 +488,32 @@
             scroller.appendChild(row);
         }
 
+        function renderTodos(items) {
+            todoList.innerHTML = '';
+
+            if (!items || items.length === 0) {
+                todoPanel.classList.remove('visible');
+                return;
+            }
+
+            todoPanel.classList.add('visible');
+
+            for (const item of items) {
+                const row = document.createElement('div');
+                row.className = `todo-item ${item.status}`;
+
+                const dot = document.createElement('span');
+                dot.className = 'todo-dot';
+
+                const title = document.createElement('span');
+                title.innerText = item.title;
+
+                row.appendChild(dot);
+                row.appendChild(title);
+                todoList.appendChild(row);
+            }
+        }
+
         function ensureAgentBubble() {
             if (currentActiveBubble) {
                 return;
@@ -464,6 +544,7 @@
             currentActiveBubble = null;
             saveHistory();
             vscode.postMessage({ command: 'clear-history' });
+            renderTodos([]);
 
             scroller.innerHTML = '';
             appendWelcomeMessage();
@@ -485,6 +566,9 @@
                 accumulatedText = "";
                 isShowingThinking = false;
             } 
+            else if (msg.command === 'todo-update') {
+                renderTodos(msg.items);
+            }
             else if (msg.command === 'stream-chunk') {
                 if (msg.text === '__SOUL_BLEACH_THINKING__') {
                     ensureAgentBubble();

@@ -1,6 +1,16 @@
 import { completion } from './request';
 import { readFile, writeFile, listFiles, findFiles, readFileWithLineNumbers, replaceRange } from './tool';
 
+type TodoStatus = 'pending' | 'in_progress' | 'completed';
+
+export type TodoItem = {
+    id: string;
+    title: string;
+    status: TodoStatus;
+};
+
+type ProgressHandler = (items: TodoItem[]) => void;
+
 const TOOLS = [
     {
         type: 'function',
@@ -178,9 +188,12 @@ export class AgentSession {
         this.messages = createInitialMessages();
     }
 
-    async run(task: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
+    async run(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
+        const todos = createTodos(task);
+        updateTodos(todos, onProgress, 'understand', 'in_progress');
         this.messages.push({ role: 'user', content: task });
-        const result = await runAgentLoop(this.messages, onChunk, signal);
+        const result = await runAgentLoop(this.messages, onChunk, signal, todos, onProgress);
+        updateTodos(todos, onProgress, 'summary', 'completed');
         this.trimMessages();
         return result;
     }
@@ -192,18 +205,24 @@ export class AgentSession {
     }
 }
 
-export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
+export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
     const messages: any[] = createInitialMessages();
+    const todos = createTodos(task);
+    updateTodos(todos, onProgress, 'understand', 'in_progress');
     messages.push({ role: 'user', content: task });
-    return runAgentLoop(messages, onChunk, signal);
+    const result = await runAgentLoop(messages, onChunk, signal, todos, onProgress);
+    updateTodos(todos, onProgress, 'summary', 'completed');
+    return result;
 }
 
-async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
+async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, signal?: AbortSignal, todos?: TodoItem[], onProgress?: ProgressHandler): Promise<string> {
     const maxIterations = 20;
 
     for (let i = 0; i < maxIterations; i++) {
         throwIfAborted(signal);
 
+        updateTodos(todos, onProgress, 'understand', 'completed');
+        updateTodos(todos, onProgress, 'context', 'in_progress');
         const message = await completion(messages, TOOLS, onChunk, signal);
         messages.push(message);
 
@@ -212,8 +231,14 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                 throw new Error('模型没有返回可显示内容，也没有返回工具调用。请检查内网模型的流式响应格式。');
             }
 
+            updateTodos(todos, onProgress, 'context', 'completed');
+            updateTodos(todos, onProgress, 'work', 'completed');
+            updateTodos(todos, onProgress, 'summary', 'in_progress');
             return message.content ?? '';
         }
+
+        updateTodos(todos, onProgress, 'context', 'completed');
+        updateTodos(todos, onProgress, 'work', 'in_progress');
 
         for (const toolCall of message.tool_calls) {
             throwIfAborted(signal);
@@ -237,6 +262,31 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
     }
 
     throw new Error('Agent stopped because it exceeded the maximum iteration count.');
+}
+
+function createTodos(task: string): TodoItem[] {
+    const isEditTask = /修改|写入|替换|加上|删除|优化|重构|实现|修复|edit|write|fix|update/i.test(task);
+
+    return [
+        { id: 'understand', title: '理解需求并拆解任务', status: 'pending' },
+        { id: 'context', title: '定位相关文件和上下文', status: 'pending' },
+        { id: 'work', title: isEditTask ? '执行代码修改' : '读取信息并整理结论', status: 'pending' },
+        { id: 'summary', title: '总结结果并给出下一步', status: 'pending' }
+    ];
+}
+
+function updateTodos(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined, id: string, status: TodoStatus) {
+    if (!todos || !onProgress) {
+        return;
+    }
+
+    const index = todos.findIndex(item => item.id === id);
+    if (index === -1) {
+        return;
+    }
+
+    todos[index] = { ...todos[index], status };
+    onProgress(todos.map(item => ({ ...item })));
 }
 
 function throwIfAborted(signal?: AbortSignal) {

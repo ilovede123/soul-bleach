@@ -30,7 +30,9 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
                 try {
                     await this.session.run(message.text, (chunk) => {
                         webviewView.webview.postMessage({ command: 'stream-chunk', text: chunk });
-                    }, this.currentAbortController.signal);
+                    }, this.currentAbortController.signal, (items) => {
+                        webviewView.webview.postMessage({ command: 'todo-update', items });
+                    });
                 } catch (e: any) {
                     if (e?.name !== 'AbortError') {
                         console.error('Soul Bleach error:', e);
@@ -51,6 +53,7 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
 
             if (message.command === 'clear-history') {
                 this.session.clear();
+                webviewView.webview.postMessage({ command: 'todo-update', items: [] });
             }
         });
     }
