@@ -6,8 +6,8 @@ import * as vscode from "vscode";
  * provider 用来选择常见厂商的默认接口，baseUrl 和 model 保留手动覆盖能力，
  * 这样同一套 Agent 逻辑可以在千问、智谱和内网 OpenAI-compatible 服务之间切换。
  */
-type ModelProvider = 'qwen' | 'zhipu' | 'custom';
-type ModelPreset = 'provider-default' | 'qwen3.7-plus' | 'qwen3.7-max' | 'qwen-plus' | 'glm-5.2' | 'custom';
+type ModelProvider = 'qwen' | 'zhipu-open' | 'zhipu-coding' | 'zai' | 'zhipu' | 'custom';
+type ModelPreset = 'provider-default' | 'qwen3.7-plus' | 'qwen3.7-max' | 'qwen-plus' | 'glm-5.2' | 'glm-5.2-1m' | 'glm-5.1' | 'glm-5' | 'glm-4.7' | 'glm-4.7-flash' | 'custom';
 
 type RequestPreset = {
     baseUrl: string;
@@ -24,6 +24,18 @@ const PROVIDER_PRESETS: Record<ModelProvider, RequestPreset> = {
         baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
         model: 'qwen3.7-plus',
         extraBody: QWEN_EXTRA_BODY
+    },
+    'zhipu-open': {
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+        model: 'glm-5.2'
+    },
+    'zhipu-coding': {
+        baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4/chat/completions',
+        model: 'glm-4.7'
+    },
+    zai: {
+        baseUrl: 'https://api.z.ai/api/paas/v4/chat/completions',
+        model: 'glm-5.2'
     },
     zhipu: {
         baseUrl: 'https://api.z.ai/api/paas/v4/chat/completions',
@@ -52,8 +64,28 @@ const MODEL_PRESETS: Record<Exclude<ModelPreset, 'provider-default'>, RequestPre
         extraBody: QWEN_EXTRA_BODY
     },
     'glm-5.2': {
-        baseUrl: PROVIDER_PRESETS.zhipu.baseUrl,
+        baseUrl: PROVIDER_PRESETS['zhipu-open'].baseUrl,
         model: 'glm-5.2'
+    },
+    'glm-5.2-1m': {
+        baseUrl: PROVIDER_PRESETS['zhipu-coding'].baseUrl,
+        model: 'glm-5.2[1m]'
+    },
+    'glm-5.1': {
+        baseUrl: PROVIDER_PRESETS['zhipu-open'].baseUrl,
+        model: 'glm-5.1'
+    },
+    'glm-5': {
+        baseUrl: PROVIDER_PRESETS['zhipu-open'].baseUrl,
+        model: 'glm-5'
+    },
+    'glm-4.7': {
+        baseUrl: PROVIDER_PRESETS['zhipu-coding'].baseUrl,
+        model: 'glm-4.7'
+    },
+    'glm-4.7-flash': {
+        baseUrl: PROVIDER_PRESETS['zhipu-coding'].baseUrl,
+        model: 'glm-4.7-flash'
     },
     custom: {
         baseUrl: '',

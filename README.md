@@ -36,8 +36,8 @@ https://api.z.ai/api/paas/v4/chat/completions
 
 插件提供以下 VS Code 设置项：
 
-- `soul-bleach.provider`：模型服务商，可选 `qwen`、`zhipu`、`custom`。
-- `soul-bleach.modelPreset`：常用模型下拉框，可选跟随服务商、`qwen3.7-plus`、`qwen3.7-max`、`qwen-plus`、`glm-5.2` 或自定义。
+- `soul-bleach.provider`：模型服务商，可选 `qwen`、`zhipu-open`、`zhipu-coding`、`zai`、`custom`。
+- `soul-bleach.modelPreset`：常用模型下拉框，可选跟随服务商、千问模型、`glm-5.2`、`glm-5.2[1m]`、`glm-5.1`、`glm-5`、`glm-4.7`、`glm-4.7-flash` 或自定义。
 - `soul-bleach.baseUrl`：Chat Completions 完整接口地址。留空时使用 modelPreset 或 provider 的默认地址。
 - `soul-bleach.apiKey`：API Key。填写后会作为 `Authorization: Bearer ...` 请求头发送；无鉴权模型可以留空。
 - `soul-bleach.model`：自定义模型名称。留空时使用 modelPreset 或 provider 的默认模型；填写后会覆盖下拉框选择。
@@ -46,13 +46,16 @@ https://api.z.ai/api/paas/v4/chat/completions
 
 如果使用智谱官方接口：
 
-1. 将 `soul-bleach.provider` 设置为 `zhipu`。
-2. 将 `soul-bleach.modelPreset` 设置为 `glm-5.2`，或保持跟随服务商。
-3. 填写 `soul-bleach.apiKey`。
-4. `soul-bleach.baseUrl` 可以留空，插件会使用智谱默认地址。
-5. `soul-bleach.model` 可以留空；如需其他支持 Function Calling 的 GLM 模型，再手动填写。
+1. 如果使用普通开放平台 Key，将 `soul-bleach.provider` 设置为 `zhipu-open`。
+2. 如果使用 GLM Coding Plan Key，将 `soul-bleach.provider` 设置为 `zhipu-coding`。
+3. 将 `soul-bleach.modelPreset` 设置为 `glm-5.2` 或 `glm-4.7`，也可以保持跟随服务商。
+4. 填写 `soul-bleach.apiKey`。
+5. `soul-bleach.baseUrl` 可以留空，插件会使用对应服务商默认地址。
+6. `soul-bleach.model` 可以留空；如需其他支持 Function Calling 的 GLM 模型，再手动填写。
 
 注意：插件里的 `baseUrl` 填的是完整请求地址，也就是包含 `/chat/completions` 的地址；这和 OpenAI SDK 示例中的 `baseURL` 根地址不是同一个概念。
+
+目前公开文档中没有确认智谱存在 `glm-4.8` 模型；文档里出现的 4.8 多数是和 Claude Opus 4.8 的对比。插件因此没有内置 `glm-4.8` 预设，如需测试内部模型名，可以把 `modelPreset` 设为 `custom` 后手动填写 `soul-bleach.model`。
 
 ### 使用方式
 
@@ -120,8 +123,8 @@ https://api.z.ai/api/paas/v4/chat/completions
 
 This extension contributes the following settings:
 
-- `soul-bleach.provider`: Model provider. Supported values are `qwen`, `zhipu`, and `custom`.
-- `soul-bleach.modelPreset`: Common model dropdown. Supported values include provider default, `qwen3.7-plus`, `qwen3.7-max`, `qwen-plus`, `glm-5.2`, and custom.
+- `soul-bleach.provider`: Model provider. Supported values are `qwen`, `zhipu-open`, `zhipu-coding`, `zai`, and `custom`.
+- `soul-bleach.modelPreset`: Common model dropdown. Supported values include provider default, Qwen models, `glm-5.2`, `glm-5.2[1m]`, `glm-5.1`, `glm-5`, `glm-4.7`, `glm-4.7-flash`, and custom.
 - `soul-bleach.baseUrl`: Full Chat Completions endpoint. Leave it empty to use the selected model preset or provider default.
 - `soul-bleach.apiKey`: Optional API key. When set, it is sent as the `Authorization: Bearer ...` request header. Leave it empty for unauthenticated internal endpoints.
 - `soul-bleach.model`: Custom model name. Leave it empty to use the selected model preset or provider default. When set, it overrides the dropdown selection.
@@ -130,13 +133,16 @@ This extension contributes the following settings:
 
 To use the official Zhipu API:
 
-1. Set `soul-bleach.provider` to `zhipu`.
-2. Set `soul-bleach.modelPreset` to `glm-5.2`, or keep provider default.
-3. Fill in `soul-bleach.apiKey`.
-4. Leave `soul-bleach.baseUrl` empty to use the built-in Zhipu endpoint.
-5. Leave `soul-bleach.model` empty, or set another GLM model that supports Function Calling.
+1. Use `zhipu-open` for a regular Zhipu Open Platform key.
+2. Use `zhipu-coding` for a GLM Coding Plan key.
+3. Set `soul-bleach.modelPreset` to `glm-5.2` or `glm-4.7`, or keep provider default.
+4. Fill in `soul-bleach.apiKey`.
+5. Leave `soul-bleach.baseUrl` empty to use the built-in endpoint.
+6. Leave `soul-bleach.model` empty, or set another GLM model that supports Function Calling.
 
 Note: the extension expects a full request endpoint in `baseUrl`, including `/chat/completions`. This differs from the `baseURL` root used in OpenAI SDK examples.
+
+No public Zhipu `glm-4.8` model was confirmed in the current documentation. Mentions of 4.8 usually refer to Claude Opus 4.8 comparisons. Use the custom model field if you need to test an internal model name.
 
 ### Usage
 
