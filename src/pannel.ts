@@ -26,6 +26,7 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
                 }
 
                 this.currentAbortController = new AbortController();
+                webviewView.webview.postMessage({ command: 'todo-update', items: [] });
                 webviewView.webview.postMessage({ command: 'stream-start' });
                 try {
                     await this.session.run(message.text, (chunk) => {

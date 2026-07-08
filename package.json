@@ -2,7 +2,7 @@
   "name": "soul-bleach",
   "displayName": "灵境",
   "description": "A VS Code sidebar AI assistant for chatting with models and working with workspace files.",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "engines": {
     "vscode": "^1.120.0"
   },

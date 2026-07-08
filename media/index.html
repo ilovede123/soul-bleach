@@ -137,7 +137,18 @@
             color: var(--vscode-textLink-foreground, #3794ff);
             margin-left: 6px;
         }
+        .waiting-text {
+            color: var(--vscode-descriptionForeground, rgba(204,204,204,0.68));
+        }
+        .waiting-dot {
+            display: inline-block;
+            animation: waitingPulse 1.2s ease-in-out infinite;
+        }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        @keyframes waitingPulse {
+            0%, 100% { opacity: 0.35; }
+            50% { opacity: 1; }
+        }
 
         #todo-panel {
             display: none;
@@ -480,6 +491,8 @@
             textarea.value = '';
             textarea.style.height = '38px';
             setGenerating(true);
+            renderTodos([]);
+            showWaitingBubble();
 
             vscode.postMessage({ command: 'user-input', text: text });
         }
@@ -628,6 +641,18 @@
             scroller.appendChild(row);
         }
 
+        function showWaitingBubble() {
+            ensureAgentBubble();
+            currentActiveBubble.innerHTML = '<span class="waiting-text">正在等待模型响应<span class="waiting-dot">...</span></span>';
+            scroller.scrollTop = scroller.scrollHeight;
+        }
+
+        function clearWaitingBubble() {
+            if (accumulatedText.length === 0 && !isShowingThinking && currentActiveBubble) {
+                currentActiveBubble.innerHTML = '';
+            }
+        }
+
         function clearChat() {
             if (isGenerating) {
                 vscode.postMessage({ command: 'stop-generation' });
@@ -659,6 +684,7 @@
                 setGenerating(true);
                 accumulatedText = "";
                 isShowingThinking = false;
+                showWaitingBubble();
             } 
             else if (msg.command === 'todo-update') {
                 renderTodos(msg.items);
@@ -673,6 +699,7 @@
                 }
 
                 ensureAgentBubble();
+                clearWaitingBubble();
 
                 if (isShowingThinking && accumulatedText.length === 0) {
                     isShowingThinking = false;
