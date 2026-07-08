@@ -177,6 +177,7 @@ function createInitialMessages(): any[] {
                 '在处理代码任务前，先使用 list_files 了解项目结构。',
                 '当用户只提供文件名或路径不完整时，先使用 find_files 查找准确路径，再读取或修改文件。',
                 '当需要查看文件内容时，可以使用 read_file。',
+                '如果用户要求查看、读取、分析或修改文件，必须直接调用工具获取文件内容，不要只回复“我来查看”或“我来查找”。',
                 '当需要修改代码时，优先使用 read_file_with_line_numbers 查看带行号的文件内容，以便定位要修改的具体行。',
                 '当需要修改已有文件时，优先使用 replace_range 进行小范围替换，不要随意使用 write_file 覆盖整个文件。',
                 '使用 replace_range 前，必须先确认 startLine 和 endLine。',
@@ -235,6 +236,14 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                 throw new Error(createEmptyResponseError(message));
             }
 
+            if (shouldContinueForToolUse(messages, message.content)) {
+                messages.push({
+                    role: 'user',
+                    content: '请不要只说明将要查看文件。请直接调用可用工具查找或读取相关文件，然后基于工具结果回答。'
+                });
+                continue;
+            }
+
             updateTodos(todos, onProgress, 'context', 'completed');
             updateTodos(todos, onProgress, 'work', 'completed');
             updateTodos(todos, onProgress, 'summary', 'in_progress');
@@ -266,6 +275,15 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
     }
 
     throw new Error('Agent stopped because it exceeded the maximum iteration count.');
+}
+
+function shouldContinueForToolUse(messages: any[], content: string): boolean {
+    const latestUserMessage = [...messages].reverse().find(message => message.role === 'user')?.content ?? '';
+    const asksForFileWork = /查看|读取|查找|分析|修改|打开|文件|代码|read|find|file|code/i.test(String(latestUserMessage));
+    const onlyAnnouncesIntent = /我来|我将|我会|让我|帮你|查找并查看|查看.*文件|查找.*文件/.test(content);
+    const alreadyRetried = messages.some(message => message.role === 'user' && String(message.content).includes('请不要只说明将要查看文件'));
+
+    return asksForFileWork && onlyAnnouncesIntent && !alreadyRetried;
 }
 
 function createEmptyResponseError(message: any): string {
