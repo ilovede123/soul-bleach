@@ -152,8 +152,8 @@ function executeTool(name: string, args: Record<string, string>): string {
     return `Unknown tool: ${name}`;
 }
 
-export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
-    const messages: any[] = [
+function createInitialMessages(): any[] {
+    return [
         {
             role: 'system',
             content: [
@@ -167,10 +167,38 @@ export async function runAgent(task: string, onChunk?: (text: string) => void, s
                 '只有在确实需要创建新文件或完整重写文件时，才使用 write_file。',
                 '任务完成后，用简洁的中文向用户总结你做了什么。'
             ].join(' ')
-        },
-        { role: 'user', content: task }
+        }
     ];
+}
 
+export class AgentSession {
+    private messages: any[] = createInitialMessages();
+
+    clear() {
+        this.messages = createInitialMessages();
+    }
+
+    async run(task: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
+        this.messages.push({ role: 'user', content: task });
+        const result = await runAgentLoop(this.messages, onChunk, signal);
+        this.trimMessages();
+        return result;
+    }
+
+    private trimMessages() {
+        const systemMessage = this.messages[0];
+        const recentMessages = this.messages.slice(-40);
+        this.messages = [systemMessage, ...recentMessages.filter(message => message !== systemMessage)];
+    }
+}
+
+export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
+    const messages: any[] = createInitialMessages();
+    messages.push({ role: 'user', content: task });
+    return runAgentLoop(messages, onChunk, signal);
+}
+
+async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<string> {
     const maxIterations = 20;
 
     for (let i = 0; i < maxIterations; i++) {

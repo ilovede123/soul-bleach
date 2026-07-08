@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import path from "path";
 import fs from "fs";
-import { runAgent } from './agent';
+import { AgentSession } from './agent';
 export class SoulBleachPanel implements vscode.WebviewViewProvider {
     private currentAbortController: AbortController | undefined;
+    private readonly session = new AgentSession();
 
     constructor(private readonly context: vscode.ExtensionContext) { }
 
@@ -27,7 +28,7 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
                 this.currentAbortController = new AbortController();
                 webviewView.webview.postMessage({ command: 'stream-start' });
                 try {
-                    await runAgent(message.text, (chunk) => {
+                    await this.session.run(message.text, (chunk) => {
                         webviewView.webview.postMessage({ command: 'stream-chunk', text: chunk });
                     }, this.currentAbortController.signal);
                 } catch (e: any) {
@@ -46,6 +47,10 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
 
             if (message.command === 'stop-generation') {
                 this.currentAbortController?.abort();
+            }
+
+            if (message.command === 'clear-history') {
+                this.session.clear();
             }
         });
     }

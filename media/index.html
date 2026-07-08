@@ -463,6 +463,7 @@
             accumulatedText = "";
             currentActiveBubble = null;
             saveHistory();
+            vscode.postMessage({ command: 'clear-history' });
 
             scroller.innerHTML = '';
             appendWelcomeMessage();
