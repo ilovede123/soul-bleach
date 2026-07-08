@@ -16,6 +16,7 @@ const MAX_CONTEXT_MESSAGES = 42;
 const RECENT_CONTEXT_MESSAGES = 24;
 const MAX_SUMMARY_LENGTH = 6000;
 const MAX_MESSAGE_SNIPPET_LENGTH = 700;
+const LOCAL_FILE_RESULT_MARKER = '[Soul Bleach Local File Result]';
 
 const TOOLS = [
     {
@@ -232,6 +233,15 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
         messages.push(message);
 
         if (!message.tool_calls || message.tool_calls.length === 0) {
+            if (shouldUseLocalFileFallback(messages, message)) {
+                const result = executeLocalFileFallback(messages);
+                messages.push({
+                    role: 'user',
+                    content: `${LOCAL_FILE_RESULT_MARKER}\n${result}\n\n请基于上面的本地文件结果继续回答用户。`
+                });
+                continue;
+            }
+
             if (!message.content) {
                 throw new Error(createEmptyResponseError(message));
             }
@@ -278,12 +288,91 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
 }
 
 function shouldContinueForToolUse(messages: any[], content: string): boolean {
-    const latestUserMessage = [...messages].reverse().find(message => message.role === 'user')?.content ?? '';
+    const latestUserMessage = getLatestUserTask(messages);
     const asksForFileWork = /查看|读取|查找|分析|修改|打开|文件|代码|read|find|file|code/i.test(String(latestUserMessage));
     const onlyAnnouncesIntent = /我来|我将|我会|让我|帮你|查找并查看|查看.*文件|查找.*文件/.test(content);
     const alreadyRetried = messages.some(message => message.role === 'user' && String(message.content).includes('请不要只说明将要查看文件'));
 
     return asksForFileWork && onlyAnnouncesIntent && !alreadyRetried;
+}
+
+function shouldUseLocalFileFallback(messages: any[], message: any): boolean {
+    const latestUserMessage = getLatestUserTask(messages);
+    const asksForFileWork = /查看|读取|查找|分析|打开|文件|代码|read|find|file|code/i.test(latestUserMessage);
+    const requestedToolCallWithoutPayload = message.finish_reason === 'tool_calls' && !message.tool_calls?.length;
+    const passiveLookupReply = message.content && shouldContinueForToolUse(messages, message.content);
+    const alreadyUsedFallback = messages.some(item => item.role === 'user' && String(item.content).startsWith(LOCAL_FILE_RESULT_MARKER));
+
+    return asksForFileWork && !alreadyUsedFallback && (requestedToolCallWithoutPayload || passiveLookupReply);
+}
+
+function executeLocalFileFallback(messages: any[]): string {
+    const task = getLatestUserTask(messages);
+    const query = extractFileQuery(task);
+
+    if (!query) {
+        return [
+            '用户要求查看代码，但没有提供明确文件名。',
+            '当前工作区根目录文件如下：',
+            listFiles('.')
+        ].join('\n');
+    }
+
+    try {
+        return [
+            `已读取文件: ${query}`,
+            readFileWithLineNumbers(query)
+        ].join('\n');
+    } catch {
+        const found = findFiles(query, 10);
+        const firstPath = getFirstFilePath(found);
+
+        if (!firstPath) {
+            return [
+                `没有直接读取到文件: ${query}`,
+                '搜索结果:',
+                found
+            ].join('\n');
+        }
+
+        return [
+            `根据 "${query}" 找到并读取文件: ${firstPath}`,
+            readFileWithLineNumbers(firstPath)
+        ].join('\n');
+    }
+}
+
+function getLatestUserTask(messages: any[]): string {
+    const message = [...messages].reverse().find(item => {
+        const content = String(item.content ?? '');
+        return item.role === 'user'
+            && !content.includes('请不要只说明将要查看文件')
+            && !content.startsWith(LOCAL_FILE_RESULT_MARKER);
+    });
+
+    return String(message?.content ?? '');
+}
+
+function extractFileQuery(text: string): string {
+    const quoted = text.match(/["'`“”‘’]([^"'`“”‘’]+\.[\w-]+)["'`“”‘’]/)?.[1];
+    if (quoted) {
+        return quoted.trim();
+    }
+
+    const fileLike = text.match(/[\w./\\-]+\.(?:ts|tsx|js|jsx|json|md|html|css|scss|less|py|java|go|rs|vue|svelte|yml|yaml|toml|xml|txt|env)/i)?.[0];
+    if (fileLike) {
+        return fileLike.trim();
+    }
+
+    const namedFile = text.match(/(?:文件|代码)\s*[:：]?\s*([\w./\\-]+)/)?.[1];
+    return namedFile?.trim() ?? '';
+}
+
+function getFirstFilePath(searchResult: string): string | undefined {
+    return searchResult
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('[DIR]') && !line.startsWith('没有找到'))[0];
 }
 
 function createEmptyResponseError(message: any): string {
