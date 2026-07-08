@@ -65,7 +65,6 @@ export function listFiles(dir: string): string {
         .map(i => (i.isDirectory() ? `[DIR] ${i.name}` : i.name))
         .join('\n');
 }
-
 export function findFiles(query: string, maxResults = 30): string {
     const root = getWorkspaceRoot();
     const normalizedQuery = query.trim().toLowerCase();
@@ -112,8 +111,6 @@ export function findFiles(query: string, maxResults = 30): string {
         : `没有找到匹配文件: ${query}`;
 }
 
-//读取带行数的代码
-
 export function readFileWithLineNumbers(filePath: string): string {
     const content = readFile(filePath);
 
@@ -124,7 +121,7 @@ export function readFileWithLineNumbers(filePath: string): string {
 }
 
 
-export function replaceRange(path: string, startLine: number, endLine: number, newContent: string): string {
+export function replaceRange(path: string, startLine: number, endLine: number, oldContent: string, newContent: string): string {
     const origin = readFile(path);
     const eol = origin.includes('\r\n') ? '\r\n' : '\n';
     const originArr = origin.split(/\r?\n/);
@@ -140,7 +137,19 @@ export function replaceRange(path: string, startLine: number, endLine: number, n
         throw Error('结束行不能小于开始行');
     }
     const startIndex = startLine - 1;
-    const deleteCount = endLine - startIndex;
+    const deleteCount = endLine - startLine + 1;
+    const currentContent = originArr.slice(startIndex, startIndex + deleteCount).join('\n');
+    const expectedContent = oldContent.replace(/\r\n/g, '\n');
+
+    if (currentContent !== expectedContent) {
+        throw Error([
+            '替换失败：目标行内容和 oldContent 不一致，文件可能已经被前一次替换改变。',
+            '请重新读取带行号的文件内容，再基于最新行号和最新 oldContent 调用 replace_range。',
+            '当前目标行内容:',
+            currentContent
+        ].join('\n'));
+    }
+
     const newContentArr = newContent.split(/\r?\n/);
     originArr.splice(startIndex, deleteCount, ...newContentArr);
 

@@ -17,6 +17,7 @@ const RECENT_CONTEXT_MESSAGES = 24;
 const MAX_SUMMARY_LENGTH = 6000;
 const MAX_MESSAGE_SNIPPET_LENGTH = 700;
 const LOCAL_FILE_RESULT_MARKER = '[Soul Bleach Local File Result]';
+const MAX_REPEATED_TOOL_ERRORS = 3;
 
 const TOOLS = [
     {
@@ -131,12 +132,16 @@ const TOOLS = [
                         type: 'number',
                         description: '结束行号，包含这一行'
                     },
+                    oldContent: {
+                        type: 'string',
+                        description: '当前文件中 startLine 到 endLine 的原始内容，必须和最新读取到的内容完全一致'
+                    },
                     newContent: {
                         type: 'string',
                         description: '用于替换指定行范围的新内容'
                     }
                 },
-                required: ['path', 'startLine', 'endLine', 'newContent']
+                required: ['path', 'startLine', 'endLine', 'oldContent', 'newContent']
             }
         }
     }
@@ -163,7 +168,7 @@ function executeTool(name: string, args: Record<string, string>): string {
     }
 
     if (name === 'replace_range') {
-        return replaceRange(args.path, Number(args.startLine), Number(args.endLine), args.newContent);
+        return replaceRange(args.path, Number(args.startLine), Number(args.endLine), args.oldContent, args.newContent);
     }
 
     return `Unknown tool: ${name}`;
@@ -181,7 +186,9 @@ function createInitialMessages(): any[] {
                 '如果用户要求查看、读取、分析或修改文件，必须直接调用工具获取文件内容，不要只回复“我来查看”或“我来查找”。',
                 '当需要修改代码时，优先使用 read_file_with_line_numbers 查看带行号的文件内容，以便定位要修改的具体行。',
                 '当需要修改已有文件时，优先使用 replace_range 进行小范围替换，不要随意使用 write_file 覆盖整个文件。',
-                '使用 replace_range 前，必须先确认 startLine 和 endLine。',
+                '使用 replace_range 前，必须先确认 startLine、endLine 和 oldContent。oldContent 必须是最新读取到的原始内容。',
+                '如果需要连续多次 replace_range，每次替换后必须重新读取文件，不能继续使用旧行号。',
+                '如果工具返回错误，不要直接结束任务。先根据错误原因重新读取文件或修正参数，再继续执行。',
                 '只有在确实需要创建新文件或完整重写文件时，才使用 write_file。',
                 '任务完成后，用简洁的中文向用户总结你做了什么。'
             ].join(' ')
@@ -197,11 +204,11 @@ export class AgentSession {
     }
 
     async run(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
-        const todos = createTodos(task);
-        updateTodos(todos, onProgress, 'understand', 'in_progress');
+        const todos = await createPlan(task, signal);
+        setActiveTodo(todos, onProgress, 0);
         this.messages.push({ role: 'user', content: task });
         const result = await runAgentLoop(this.messages, onChunk, signal, todos, onProgress);
-        updateTodos(todos, onProgress, 'summary', 'completed');
+        completeAllTodos(todos, onProgress);
         this.trimMessages();
         return result;
     }
@@ -213,22 +220,23 @@ export class AgentSession {
 
 export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
     const messages: any[] = createInitialMessages();
-    const todos = createTodos(task);
-    updateTodos(todos, onProgress, 'understand', 'in_progress');
+    const todos = await createPlan(task, signal);
+    setActiveTodo(todos, onProgress, 0);
     messages.push({ role: 'user', content: task });
     const result = await runAgentLoop(messages, onChunk, signal, todos, onProgress);
-    updateTodos(todos, onProgress, 'summary', 'completed');
+    completeAllTodos(todos, onProgress);
     return result;
 }
 
 async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, signal?: AbortSignal, todos?: TodoItem[], onProgress?: ProgressHandler): Promise<string> {
     const maxIterations = 20;
+    let lastToolError = '';
+    let repeatedToolErrors = 0;
 
     for (let i = 0; i < maxIterations; i++) {
         throwIfAborted(signal);
 
-        updateTodos(todos, onProgress, 'understand', 'completed');
-        updateTodos(todos, onProgress, 'context', 'in_progress');
+        setActiveTodo(todos, onProgress, Math.min(i + 1, Math.max(0, (todos?.length ?? 1) - 2)));
         const message = await completion(messages, TOOLS, onChunk, signal);
         messages.push(message);
 
@@ -254,37 +262,72 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                 continue;
             }
 
-            updateTodos(todos, onProgress, 'context', 'completed');
-            updateTodos(todos, onProgress, 'work', 'completed');
-            updateTodos(todos, onProgress, 'summary', 'in_progress');
+            setActiveTodo(todos, onProgress, Math.max(0, (todos?.length ?? 1) - 1));
             return message.content ?? '';
         }
 
-        updateTodos(todos, onProgress, 'context', 'completed');
-        updateTodos(todos, onProgress, 'work', 'in_progress');
+        setActiveTodo(todos, onProgress, Math.min(i + 2, Math.max(0, (todos?.length ?? 1) - 2)));
 
         for (const toolCall of message.tool_calls) {
             throwIfAborted(signal);
 
             const name = toolCall.function?.name;
             const rawArgs = toolCall.function?.arguments || '{}';
+            let result: string;
 
-            const args = parseToolArguments(name, rawArgs);
-            if (toolCall.function) {
+            try {
+                const args = parseToolArguments(name, rawArgs);
+                if (toolCall.function) {
 
-                toolCall.function.arguments = JSON.stringify(args);
+                    toolCall.function.arguments = JSON.stringify(args);
+                }
+                result = executeTool(name, args);
+                lastToolError = '';
+                repeatedToolErrors = 0;
+            } catch (e: any) {
+                result = formatToolError(name, e);
+                const errorKey = getToolErrorKey(name, e);
+                repeatedToolErrors = errorKey === lastToolError ? repeatedToolErrors + 1 : 1;
+                lastToolError = errorKey;
             }
-            const result = executeTool(name, args);
 
             messages.push({
                 role: 'tool',
                 tool_call_id: toolCall.id,
                 content: result
             });
+
+            if (repeatedToolErrors >= MAX_REPEATED_TOOL_ERRORS) {
+                setActiveTodo(todos, onProgress, Math.max(0, (todos?.length ?? 1) - 1));
+                return [
+                    '任务已停止：同一个工具错误连续出现，继续重试会导致循环。',
+                    '',
+                    result,
+                    '',
+                    '建议：重新读取目标文件的最新行号和原始内容后，再重新发起修改。'
+                ].join('\n');
+            }
         }
     }
 
-    throw new Error('Agent stopped because it exceeded the maximum iteration count.');
+    setActiveTodo(todos, onProgress, Math.max(0, (todos?.length ?? 1) - 1));
+    return [
+        '任务已停止：执行轮次达到上限，未能稳定完成。',
+        '通常原因是模型反复调用工具但没有根据工具结果修正参数。',
+        '建议缩小需求范围，或先让智能体重新读取目标文件后再修改。'
+    ].join('\n');
+}
+
+function formatToolError(name: string | undefined, error: any): string {
+    return [
+        `工具执行失败: ${name ?? 'unknown'}`,
+        error?.message ?? String(error),
+        '请根据错误信息调整参数。如果是 replace_range 内容不一致，必须重新读取带行号的文件内容后再重试。'
+    ].join('\n');
+}
+
+function getToolErrorKey(name: string | undefined, error: any): string {
+    return `${name ?? 'unknown'}:${error?.message ?? String(error)}`;
 }
 
 function shouldContinueForToolUse(messages: any[], content: string): boolean {
@@ -389,7 +432,63 @@ function createEmptyResponseError(message: any): string {
     ].join('\n');
 }
 
-function createTodos(task: string): TodoItem[] {
+async function createPlan(task: string, signal?: AbortSignal): Promise<TodoItem[]> {
+    try {
+        const message = await completion([
+            {
+                role: 'system',
+                content: [
+                    '你是一个代码任务规划器。',
+                    '根据用户需求拆解 3 到 6 个可执行步骤。',
+                    '只返回 JSON，不要返回 Markdown，不要解释。',
+                    'JSON 格式必须是: {"todos":[{"title":"步骤名称"}]}',
+                    '步骤要具体，避免使用“理解需求”这种空泛描述。',
+                    '不要调用工具。'
+                ].join(' ')
+            },
+            { role: 'user', content: task }
+        ], [], undefined, signal);
+
+        return parsePlan(message.content);
+    } catch {
+        return createFallbackTodos(task);
+    }
+}
+
+function parsePlan(content: string | undefined): TodoItem[] {
+    if (!content) {
+        throw new Error('Planner returned empty content.');
+    }
+
+    const jsonText = extractJsonObject(content);
+    const parsed = JSON.parse(jsonText);
+    const items = Array.isArray(parsed.todos) ? parsed.todos : [];
+    const todos = items
+        .map((item: any, index: number) => ({
+            id: `plan-${index + 1}`,
+            title: String(item.title ?? '').trim(),
+            status: 'pending' as TodoStatus
+        }))
+        .filter((item: TodoItem) => item.title.length > 0)
+        .slice(0, 6);
+
+    if (todos.length === 0) {
+        throw new Error('Planner returned no todo items.');
+    }
+
+    return todos;
+}
+
+function extractJsonObject(content: string): string {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) {
+        throw new Error('Planner response did not contain JSON.');
+    }
+
+    return match[0];
+}
+
+function createFallbackTodos(task: string): TodoItem[] {
     const isEditTask = /修改|写入|替换|加上|删除|优化|重构|实现|修复|edit|write|fix|update/i.test(task);
 
     return [
@@ -400,17 +499,43 @@ function createTodos(task: string): TodoItem[] {
     ];
 }
 
-function updateTodos(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined, id: string, status: TodoStatus) {
+function setActiveTodo(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined, activeIndex: number) {
     if (!todos || !onProgress) {
         return;
     }
 
-    const index = todos.findIndex(item => item.id === id);
-    if (index === -1) {
+    if (todos.length === 0) {
         return;
     }
 
-    todos[index] = { ...todos[index], status };
+    const safeIndex = Math.max(0, Math.min(activeIndex, todos.length - 1));
+
+    for (let index = 0; index < todos.length; index++) {
+        if (index < safeIndex) {
+            todos[index] = { ...todos[index], status: 'completed' };
+        } else if (index === safeIndex) {
+            todos[index] = { ...todos[index], status: 'in_progress' };
+        } else {
+            todos[index] = { ...todos[index], status: 'pending' };
+        }
+    }
+
+    publishTodos(todos, onProgress);
+}
+
+function completeAllTodos(todos: TodoItem[] | undefined, onProgress: ProgressHandler | undefined) {
+    if (!todos || !onProgress) {
+        return;
+    }
+
+    for (let index = 0; index < todos.length; index++) {
+        todos[index] = { ...todos[index], status: 'completed' };
+    }
+
+    publishTodos(todos, onProgress);
+}
+
+function publishTodos(todos: TodoItem[], onProgress: ProgressHandler) {
     onProgress(todos.map(item => ({ ...item })));
 }
 

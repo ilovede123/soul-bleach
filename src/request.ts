@@ -18,18 +18,23 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
         headers.Authorization = `Bearer ${apiKey}`;
     }
 
+    const body: Record<string, unknown> = {
+        model,
+        messages,
+        stream: true,
+        enable_thinking: false
+    };
+
+    if (tools.length > 0) {
+        body.tools = tools;
+        body.tool_choice = 'auto';
+    }
+
     const response = await fetch(baseUrl, {
         method: 'POST',
         signal,
         headers,
-        body: JSON.stringify({
-            model,
-            messages,
-            tools,
-            tool_choice: 'auto',
-            stream: true,
-            enable_thinking: false
-        })
+        body: JSON.stringify(body)
     });
 
     if (!response.ok) {
