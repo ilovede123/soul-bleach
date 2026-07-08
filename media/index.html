@@ -717,35 +717,7 @@
                 renderTodos(msg.items);
             }
             else if (msg.command === 'stream-chunk') {
-                if (typeof msg.text === 'string' && msg.text.startsWith('__SOUL_BLEACH_REASONING__')) {
-                    ensureAgentBubble();
-                    clearWaitingBubble();
-                    isShowingThinking = true;
-                    hasReasoningSignal = true;
-                    accumulatedReasoning += msg.text.slice('__SOUL_BLEACH_REASONING__'.length);
-                    renderActiveAgentBubble();
-                    scroller.scrollTop = scroller.scrollHeight;
-                    return;
-                }
-
-                if (msg.text === '__SOUL_BLEACH_THINKING__') {
-                    ensureAgentBubble();
-                    isShowingThinking = true;
-                    hasReasoningSignal = true;
-                    renderActiveAgentBubble();
-                    scroller.scrollTop = scroller.scrollHeight;
-                    return;
-                }
-
-                ensureAgentBubble();
-                clearWaitingBubble();
-
-                if (isShowingThinking && accumulatedText.length === 0) {
-                    isShowingThinking = false;
-                    currentActiveBubble.innerHTML = '';
-                }
-
-                accumulatedText += msg.text;
+                consumeStreamChunk(String(msg.text ?? ''));
                 renderActiveAgentBubble();
                 scroller.scrollTop = scroller.scrollHeight;
             } 
@@ -765,6 +737,68 @@
                 setGenerating(false);
             }
         });
+
+        function consumeStreamChunk(chunk) {
+            const reasoningMarker = '__SOUL_BLEACH_REASONING__';
+            const thinkingMarker = '__SOUL_BLEACH_THINKING__';
+            let text = chunk;
+
+            ensureAgentBubble();
+            clearWaitingBubble();
+
+            while (text.length > 0) {
+                const reasoningIndex = text.indexOf(reasoningMarker);
+                const thinkingIndex = text.indexOf(thinkingMarker);
+                const markerIndexes = [reasoningIndex, thinkingIndex].filter(index => index >= 0);
+                const nextMarkerIndex = markerIndexes.length > 0 ? Math.min(...markerIndexes) : -1;
+
+                if (nextMarkerIndex === -1) {
+                    appendAnswerText(text);
+                    return;
+                }
+
+                if (nextMarkerIndex > 0) {
+                    appendAnswerText(text.slice(0, nextMarkerIndex));
+                    text = text.slice(nextMarkerIndex);
+                    continue;
+                }
+
+                if (text.startsWith(thinkingMarker)) {
+                    isShowingThinking = true;
+                    hasReasoningSignal = true;
+                    text = text.slice(thinkingMarker.length);
+                    continue;
+                }
+
+                if (text.startsWith(reasoningMarker)) {
+                    isShowingThinking = true;
+                    hasReasoningSignal = true;
+                    text = text.slice(reasoningMarker.length);
+
+                    const nextThinkingIndex = text.indexOf(thinkingMarker);
+                    const nextReasoningIndex = text.indexOf(reasoningMarker);
+                    const nextIndexes = [nextThinkingIndex, nextReasoningIndex].filter(index => index >= 0);
+                    const nextIndex = nextIndexes.length > 0 ? Math.min(...nextIndexes) : -1;
+                    const reasoningText = nextIndex === -1 ? text : text.slice(0, nextIndex);
+
+                    accumulatedReasoning += reasoningText;
+                    text = nextIndex === -1 ? '' : text.slice(nextIndex);
+                    continue;
+                }
+            }
+        }
+
+        function appendAnswerText(text) {
+            if (!text) {
+                return;
+            }
+
+            if (isShowingThinking && accumulatedText.length === 0) {
+                isShowingThinking = false;
+            }
+
+            accumulatedText += text;
+        }
 
         function renderActiveAgentBubble() {
             const parts = [];

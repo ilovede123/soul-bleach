@@ -211,6 +211,7 @@ function stripThinkBlocks(text: string): string {
 function createThinkFilter(onChunk?: (text: string) => void) {
     let buffer = '';
     let isThinking = false;
+    let hasSentThinkingSignal = false;
 
     return {
         handleText(text: string) {
@@ -256,7 +257,10 @@ function createThinkFilter(onChunk?: (text: string) => void) {
 
                 buffer = buffer.slice(thinkStart + '<think>'.length);
                 isThinking = true;
-                onChunk?.('__SOUL_BLEACH_THINKING__');
+                if (!hasSentThinkingSignal) {
+                    onChunk?.('__SOUL_BLEACH_THINKING__');
+                    hasSentThinkingSignal = true;
+                }
             }
         },
         flush() {
@@ -325,7 +329,6 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
     }
 
     if (delta?.reasoning_content) {
-        onChunk?.('__SOUL_BLEACH_THINKING__');
         onChunk?.(`__SOUL_BLEACH_REASONING__${normalizeContent(delta.reasoning_content)}`);
     }
 
