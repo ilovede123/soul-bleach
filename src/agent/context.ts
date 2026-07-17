@@ -74,6 +74,11 @@ function buildContextSummary(previousSummary: string, messages: any[]): string {
 }
 
 function summarizeMessage(message: any): string {
+    // 执行计划属于长任务的关键状态，压缩时必须保留，避免模型忘记尚未完成的步骤
+    if (message.role === 'system' && String(message.content).startsWith('[Soul Bleach Execution Plan]')) {
+        return `执行计划: ${truncateText(message.content, MAX_MESSAGE_SNIPPET_LENGTH)}`;
+    }
+
     if (message.role === 'user') {
         return `用户需求: ${truncateText(message.content, MAX_MESSAGE_SNIPPET_LENGTH)}`;
     }

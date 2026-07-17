@@ -1,8 +1,26 @@
 {
-  "name": "soul-bleach",
-  "displayName": "灵境",
+  "name": "soul-bleach-neo",
+  "displayName": "灵境·",
+  "publisher": "dengwei",
   "description": "A VS Code sidebar AI assistant for chatting with models and working with workspace files.",
-  "version": "0.0.23",
+  "version": "0.0.30",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ilovede123/soul-bleach.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ilovede123/soul-bleach/issues"
+  },
+  "homepage": "https://github.com/ilovede123/soul-bleach#readme",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "agent",
+    "assistant",
+    "chat",
+    "workspace"
+  ],
   "engines": {
     "vscode": "^1.120.0"
   },

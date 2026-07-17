@@ -189,6 +189,10 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
     }
     thinkFilter.flush();
 
+    if (isInterruptedWithoutPayload(fullMessage)) {
+        throw new Error(createInterruptedResponseError(fullMessage.finish_reason));
+    }
+
     if (!fullMessage.content) {
         delete fullMessage.content;
     } else {
@@ -289,6 +293,20 @@ function createAbortError(): Error {
     const error = new Error('Request aborted.');
     error.name = 'AbortError';
     return error;
+}
+
+function isInterruptedWithoutPayload(message: any): boolean {
+    return /network_error|timeout|error/i.test(String(message.finish_reason ?? ''))
+        && !message.content
+        && !message.tool_calls?.length;
+}
+
+function createInterruptedResponseError(finishReason: string): string {
+    return [
+        `模型服务中断：${finishReason}`,
+        '服务端已经结束了这次流式响应，但没有返回可显示内容，也没有返回工具调用。',
+        '这不是前端气泡或工具解析的问题，优先检查模型服务、网关超时、模型并发限制或接口稳定性。'
+    ].join('\n');
 }
 
 function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) => void, debugLines?: string[]) {

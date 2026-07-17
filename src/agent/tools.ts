@@ -10,6 +10,23 @@ export const AGENT_TOOLS = [
     {
         type: 'function',
         function: {
+            name: 'update_plan',
+            description: '更新当前任务计划的执行进度。开始执行某个计划步骤前调用，传入该步骤从 1 开始的序号；此前步骤会标记为完成，当前步骤显示为正在执行。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    activeStep: {
+                        type: 'number',
+                        description: '当前准备执行的计划步骤序号，从 1 开始'
+                    }
+                },
+                required: ['activeStep']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
             name: 'read_file',
             description: '读取当前工作区内的小文件全文。代码文件或大文件优先使用 read_file_with_line_numbers 按范围读取，避免一次性占用过多上下文。',
             parameters: {

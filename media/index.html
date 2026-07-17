@@ -468,6 +468,34 @@
         let chatHistory = vscode.getState()?.chatHistory ?? [];
         let isGenerating = false;
         let isShowingThinking = false;
+        let shouldAutoScroll = true;
+        let isProgrammaticScroll = false;
+
+        function isNearBottom() {
+            return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
+        }
+
+        function scrollToBottomIfNeeded(force = false) {
+            if (!force && !shouldAutoScroll) {
+                return;
+            }
+
+            isProgrammaticScroll = true;
+            scroller.scrollTop = scroller.scrollHeight;
+            requestAnimationFrame(() => {
+                isProgrammaticScroll = false;
+            });
+        }
+
+        scroller.addEventListener('scroll', () => {
+            if (!isGenerating || isProgrammaticScroll) {
+                return;
+            }
+
+            if (!isNearBottom()) {
+                shouldAutoScroll = false;
+            }
+        });
 
         function saveHistory() {
             if (chatHistory.length > MAX_HISTORY_ITEMS) {
@@ -513,6 +541,7 @@
             accumulatedText = "";
             accumulatedReasoning = "";
             hasReasoningSignal = false;
+            shouldAutoScroll = true;
             setGenerating(true);
             renderTodos([]);
             showWaitingBubble();
@@ -572,7 +601,7 @@
             row.appendChild(label);
             row.appendChild(bubble);
             scroller.appendChild(row);
-            scroller.scrollTop = scroller.scrollHeight;
+            scrollToBottomIfNeeded();
 
             if (shouldSave) {
                 chatHistory.push({ role, text });
@@ -667,7 +696,7 @@
         function showWaitingBubble() {
             ensureAgentBubble();
             currentActiveBubble.innerHTML = '<span class="waiting-text">正在等待模型响应<span class="waiting-dot">...</span></span>';
-            scroller.scrollTop = scroller.scrollHeight;
+            scrollToBottomIfNeeded();
         }
 
         function clearWaitingBubble() {
@@ -686,6 +715,7 @@
             accumulatedReasoning = "";
             hasReasoningSignal = false;
             currentActiveBubble = null;
+            shouldAutoScroll = true;
             saveHistory();
             vscode.postMessage({ command: 'clear-history' });
             renderTodos([]);
@@ -711,6 +741,7 @@
                 accumulatedReasoning = "";
                 hasReasoningSignal = false;
                 isShowingThinking = false;
+                shouldAutoScroll = true;
                 showWaitingBubble();
             } 
             else if (msg.command === 'todo-update') {
@@ -719,7 +750,7 @@
             else if (msg.command === 'stream-chunk') {
                 consumeStreamChunk(String(msg.text ?? ''));
                 renderActiveAgentBubble();
-                scroller.scrollTop = scroller.scrollHeight;
+                scrollToBottomIfNeeded();
             } 
             else if (msg.command === 'stream-end') {
                 if (currentActiveBubble) {
@@ -735,6 +766,7 @@
                     isShowingThinking = false;
                 }
                 setGenerating(false);
+                shouldAutoScroll = true;
             }
         });
 
