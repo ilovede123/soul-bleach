@@ -1,8 +1,28 @@
 {
-  "name": "soul-bleach",
-  "displayName": "灵境",
-  "description": "A VS Code sidebar AI assistant for chatting with models and working with workspace files.",
-  "version": "0.0.23",
+  "name": "soul-bleach-neo",
+  "displayName": "灵境·",
+  "publisher": "dengwei",
+  "description": "支持 Qwen、GLM 和自定义模型的 VS Code 智能编码助手。",
+  "version": "1.0.0",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ilovede123/soul-bleach.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ilovede123/soul-bleach/issues"
+  },
+  "homepage": "https://github.com/ilovede123/soul-bleach#readme",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "agent",
+    "assistant",
+    "chat",
+    "workspace",
+    "qwen",
+    "glm"
+  ],
   "engines": {
     "vscode": "^1.120.0"
   },
@@ -32,16 +52,24 @@
     },
     "commands": [
       {
-        "command": "soul-bleach.helloWorld",
-        "title": "灵境: Hello World"
-      },
-      {
         "command": "soul-bleach.run",
-        "title": "灵境: Run Agent"
+        "title": "灵境: 运行智能体"
       },
       {
-        "command": "soul-bleach.test",
-        "title": "灵境: Agent Test"
+        "command": "soul-bleach.setApiKey",
+        "title": "灵境: 设置 API Key"
+      },
+      {
+        "command": "soul-bleach.clearApiKey",
+        "title": "灵境: 清除 API Key"
+      },
+      {
+        "command": "soul-bleach.testConnection",
+        "title": "灵境: 测试模型连接"
+      },
+      {
+        "command": "soul-bleach.showDiagnostics",
+        "title": "灵境: 查看诊断日志"
       }
     ],
     "configuration": {
@@ -102,11 +130,6 @@
           "default": "",
           "description": "Chat Completions 完整接口地址。留空时使用 modelPreset 或 provider 的默认地址；自定义内网模型时填写类似 http://host:port/v1/chat/completions"
         },
-        "soul-bleach.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "API Key。内网无鉴权模型可以留空"
-        },
         "soul-bleach.model": {
           "type": "string",
           "default": "",
@@ -116,13 +139,14 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run compile",
-    "package": "vsce package",
+    "vscode:prepublish": "pnpm run compile && pnpm run bundle",
+    "package": "vsce package --no-dependencies",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -131,8 +155,12 @@
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
     "eslint": "^9.39.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
+  },
+  "dependencies": {
+    "officeparser": "^7.3.0"
   }
 }

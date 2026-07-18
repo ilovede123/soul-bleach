@@ -58,6 +58,9 @@ export function runCommand(command: string): string {
 }
 
 function getWorkspaceRoot(): string {
+    if (!vscode.workspace.isTrusted) {
+        throw new Error('当前工作区尚未受信任，不能执行项目命令');
+    }
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
         throw new Error('没有打开的工作区');

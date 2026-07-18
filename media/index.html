@@ -177,6 +177,17 @@
         #todo-panel.visible {
             display: block;
         }
+        #file-task-panel {
+            display: none;
+            max-height: 190px;
+            overflow-y: auto;
+            padding: 9px 14px;
+            border-top: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+            background-color: var(--vscode-sidebar-background, #252526);
+        }
+        #file-task-panel.visible {
+            display: block;
+        }
         .todo-title {
             display: flex;
             align-items: center;
@@ -281,6 +292,7 @@
         }
 
         #input-container {
+            position: relative;
             padding: 10px 14px 12px;
             background-color: var(--vscode-sidebar-background, #252526);
             border-top: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
@@ -289,6 +301,7 @@
             display: flex;
             justify-content: flex-end;
             align-items: center;
+            gap: 3px;
             min-height: 22px;
             margin-bottom: 6px;
         }
@@ -305,6 +318,151 @@
         .input-wrapper:focus-within {
             border-color: var(--vscode-focusBorder, #007fd4);
             box-shadow: 0 0 4px rgba(0, 127, 212, 0.25);
+        }
+        #attachment-tray {
+            display: none;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 0 0 7px;
+        }
+        #attachment-tray.visible {
+            display: flex;
+        }
+        .attachment-chip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
+            max-width: 100%;
+            height: 26px;
+            padding: 0 7px;
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.12));
+            border-radius: 6px;
+            background: var(--vscode-editor-background, #1e1e1e);
+            color: var(--vscode-foreground, #cccccc);
+            font-size: 11px;
+        }
+        .attachment-chip.image {
+            width: 54px;
+            height: 54px;
+            padding: 0;
+            overflow: hidden;
+        }
+        .attachment-chip.image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .attachment-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .attachment-remove {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--vscode-descriptionForeground, #999999);
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .attachment-chip.image .attachment-remove {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            background: rgba(0,0,0,0.66);
+            color: #ffffff;
+        }
+        #file-suggestions {
+            position: absolute;
+            z-index: 20;
+            left: 14px;
+            right: 14px;
+            bottom: calc(100% - 8px);
+            display: none;
+            max-height: 210px;
+            overflow-y: auto;
+            padding: 5px;
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.14));
+            border-radius: 7px;
+            background: var(--vscode-menu-background, #252526);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+        }
+        #file-suggestions.visible {
+            display: block;
+        }
+        .file-suggestion {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-height: 28px;
+            padding: 3px 7px;
+            border-radius: 4px;
+            color: var(--vscode-menu-foreground, #cccccc);
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .file-suggestion.active,
+        .file-suggestion:hover {
+            background: var(--vscode-list-activeSelectionBackground, #094771);
+            color: var(--vscode-list-activeSelectionForeground, #ffffff);
+        }
+        .file-suggestion-path {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .input-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            flex: 0 0 28px;
+            padding: 0;
+            border: none;
+            border-radius: 5px;
+            background: transparent;
+            color: var(--vscode-descriptionForeground, #a0a0a0);
+            cursor: pointer;
+        }
+        .input-icon-btn:hover {
+            color: var(--vscode-foreground, #ffffff);
+            background: rgba(255,255,255,0.06);
+        }
+        .message-attachments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 7px;
+        }
+        .message-image {
+            width: 96px;
+            height: 72px;
+            object-fit: cover;
+            border-radius: 5px;
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.12));
+        }
+        .message-file {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            padding: 3px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.06);
+            color: var(--vscode-descriptionForeground, #b7b7b7);
+            font-size: 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         #user-textarea {
             flex: 1;
@@ -355,7 +513,9 @@
             transition: background-color 0.15s, opacity 0.15s, transform 0.1s;
         }
 
-        #clear-btn {
+        #clear-btn,
+        #diff-btn,
+        #undo-btn {
             display: inline-flex;
             align-items: center;
             gap: 5px;
@@ -376,7 +536,9 @@
             background-color: var(--vscode-button-hoverBackground, #1177bb);
             transform: scale(1.05);
         }
-        #clear-btn:hover {
+        #clear-btn:hover,
+        #diff-btn:hover,
+        #undo-btn:hover {
             color: var(--vscode-foreground, #ffffff);
             background: rgba(255, 255, 255, 0.06);
             border-color: rgba(255, 255, 255, 0.08);
@@ -385,7 +547,9 @@
         #send-btn:active { 
             transform: scale(0.90);
         }
-        #clear-btn:active {
+        #clear-btn:active,
+        #diff-btn:active,
+        #undo-btn:active {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -429,8 +593,24 @@
         <div id="todo-list" class="todo-list"></div>
     </div>
 
+    <div id="file-task-panel">
+        <div class="todo-title">
+            <span>文件清单</span>
+            <span id="file-task-count" class="todo-count"></span>
+        </div>
+        <div id="file-task-list" class="todo-list"></div>
+    </div>
+
     <div id="input-container">
         <div class="input-toolbar">
+            <button id="diff-btn" title="查看最近一次修改">
+                <svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M7 3h2v18H7V3zm8 4l4 5-4 5v-4h-4v-2h4V7z"/></svg>
+                <span>Diff</span>
+            </button>
+            <button id="undo-btn" title="撤销最近一次修改">
+                <svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M9 7V3l-7 6 7 6v-4h5a5 5 0 015 5v3h2v-3a7 7 0 00-7-7H9V7z"/></svg>
+                <span>撤销</span>
+            </button>
             <button id="clear-btn" title="清空聊天记录">
                 <svg class="toolbar-icon" viewBox="0 0 24 24">
                     <path d="M9 3h6l1 2h5v2H3V5h5l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z"/>
@@ -438,7 +618,15 @@
                 <span>清空</span>
             </button>
         </div>
+        <div id="attachment-tray"></div>
+        <div id="file-suggestions"></div>
         <div class="input-wrapper">
+            <input id="image-input" type="file" accept="image/*,.pdf,.docx,.pptx,.xlsx,.rtf,.odt,.odp,.ods,.epub,.txt,.md,.json,.js,.ts,.tsx,.vue,.html,.css,.scss,.csv,.yaml,.yml" multiple hidden>
+            <button id="attach-btn" class="input-icon-btn" title="上传图片或文档">
+                <svg class="toolbar-icon" viewBox="0 0 24 24">
+                    <path d="M16.5 6.5l-7.8 7.8a2.5 2.5 0 103.5 3.5l8.1-8.1a4.5 4.5 0 00-6.4-6.4L5.5 11.7a6.5 6.5 0 109.2 9.2l6.1-6.1-1.4-1.4-6.1 6.1a4.5 4.5 0 11-6.4-6.4l8.4-8.4a2.5 2.5 0 013.5 3.5l-8.1 8.1a.5.5 0 11-.7-.7l7.8-7.8-1.3-1.3z"/>
+                </svg>
+            </button>
             <textarea id="user-textarea" placeholder="向智能体提问... (Enter 发送，Ctrl+Enter 换行)"></textarea>
             <button id="send-btn" title="发送" disabled>
                 <svg class="toolbar-icon" viewBox="0 0 24 24">
@@ -454,10 +642,23 @@
         const textarea = document.getElementById('user-textarea');
         const sendBtn = document.getElementById('send-btn');
         const clearBtn = document.getElementById('clear-btn');
+        const diffBtn = document.getElementById('diff-btn');
+        const undoBtn = document.getElementById('undo-btn');
+        const attachBtn = document.getElementById('attach-btn');
+        const imageInput = document.getElementById('image-input');
+        const attachmentTray = document.getElementById('attachment-tray');
+        const fileSuggestions = document.getElementById('file-suggestions');
         const todoPanel = document.getElementById('todo-panel');
         const todoList = document.getElementById('todo-list');
         const todoCount = document.getElementById('todo-count');
+        const fileTaskPanel = document.getElementById('file-task-panel');
+        const fileTaskList = document.getElementById('file-task-list');
+        const fileTaskCount = document.getElementById('file-task-count');
         const MAX_HISTORY_ITEMS = 100;
+        const MAX_IMAGE_COUNT = 4;
+        const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+        const MAX_DOCUMENT_COUNT = 4;
+        const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
         const sendIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M24 0l-6 22-5-9-11-5zM13 13l4-8-8 6zm-2 2v7l3-4z"/></svg>';
         const stopIcon = '<svg class="toolbar-icon" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>';
 
@@ -468,6 +669,40 @@
         let chatHistory = vscode.getState()?.chatHistory ?? [];
         let isGenerating = false;
         let isShowingThinking = false;
+        let shouldAutoScroll = true;
+        let isProgrammaticScroll = false;
+        let selectedImages = [];
+        let selectedDocuments = [];
+        let selectedFiles = [];
+        let currentFileSuggestions = [];
+        let activeSuggestionIndex = 0;
+        let mentionSearchTimer = null;
+
+        function isNearBottom() {
+            return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
+        }
+
+        function scrollToBottomIfNeeded(force = false) {
+            if (!force && !shouldAutoScroll) {
+                return;
+            }
+
+            isProgrammaticScroll = true;
+            scroller.scrollTop = scroller.scrollHeight;
+            requestAnimationFrame(() => {
+                isProgrammaticScroll = false;
+            });
+        }
+
+        scroller.addEventListener('scroll', () => {
+            if (!isGenerating || isProgrammaticScroll) {
+                return;
+            }
+
+            if (!isNearBottom()) {
+                shouldAutoScroll = false;
+            }
+        });
 
         function saveHistory() {
             if (chatHistory.length > MAX_HISTORY_ITEMS) {
@@ -485,7 +720,7 @@
         }
 
         function updateSendButtonState() {
-            if (isGenerating || textarea.value.trim().length > 0) {
+            if (isGenerating || textarea.value.trim().length > 0 || selectedImages.length > 0 || selectedDocuments.length > 0 || selectedFiles.length > 0) {
                 sendBtn.removeAttribute('disabled');
             } else {
                 sendBtn.setAttribute('disabled', 'true');
@@ -496,6 +731,7 @@
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 140) + 'px';
             updateSendButtonState();
+            scheduleFileMentionSearch();
         });
 
         function handleCommit() {
@@ -505,24 +741,59 @@
             }
 
             const text = textarea.value.trim();
-            if (!text) return;
+            if (!text && selectedImages.length === 0 && selectedDocuments.length === 0 && selectedFiles.length === 0) return;
 
-            appendMessage('user', text, true);
+            const attachments = createMessageAttachments(selectedImages, selectedDocuments, selectedFiles);
+            const images = selectedImages.map(image => ({ name: image.name, dataUrl: image.dataUrl }));
+            const documents = selectedDocuments.map(document => ({ name: document.name, dataUrl: document.dataUrl }));
+            const referencedFiles = [...selectedFiles];
+            appendMessage('user', text, true, attachments);
             textarea.value = '';
             textarea.style.height = '38px';
+            selectedImages = [];
+            selectedDocuments = [];
+            selectedFiles = [];
+            renderAttachmentTray();
+            hideFileSuggestions();
             accumulatedText = "";
             accumulatedReasoning = "";
             hasReasoningSignal = false;
+            shouldAutoScroll = true;
             setGenerating(true);
             renderTodos([]);
+            renderFileTasks([]);
             showWaitingBubble();
 
-            vscode.postMessage({ command: 'user-input', text: text });
+            vscode.postMessage({ command: 'user-input', text, images, documents, referencedFiles });
         }
 
         sendBtn.addEventListener('click', handleCommit);
         clearBtn.addEventListener('click', clearChat);
+        diffBtn.addEventListener('click', () => vscode.postMessage({ command: 'show-last-diff' }));
+        undoBtn.addEventListener('click', () => vscode.postMessage({ command: 'undo-last-change' }));
+        attachBtn.addEventListener('click', () => imageInput.click());
+        imageInput.addEventListener('change', handleAttachmentSelection);
         textarea.addEventListener('keydown', (e) => {
+            if (fileSuggestions.classList.contains('visible')) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    moveActiveSuggestion(e.key === 'ArrowDown' ? 1 : -1);
+                    return;
+                }
+
+                if (e.key === 'Enter' && currentFileSuggestions.length > 0) {
+                    e.preventDefault();
+                    selectSuggestedFile(currentFileSuggestions[activeSuggestionIndex]);
+                    return;
+                }
+
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    hideFileSuggestions();
+                    return;
+                }
+            }
+
             if (e.key !== 'Enter') {
                 return;
             }
@@ -552,7 +823,261 @@
             updateSendButtonState();
         }
 
-        function appendMessage(role, text, shouldSave = false) {
+        /** 读取用户选择的图片并在输入框上方生成预览。 */
+        async function handleAttachmentSelection() {
+            const files = Array.from(imageInput.files ?? []);
+            imageInput.value = '';
+
+            for (const file of files) {
+                if (file.type.startsWith('image/')) {
+                    if (selectedImages.length >= MAX_IMAGE_COUNT) {
+                        showInputWarning(`一次最多上传 ${MAX_IMAGE_COUNT} 张图片。`);
+                        continue;
+                    }
+                    if (file.size > MAX_IMAGE_BYTES) {
+                        showInputWarning(`${file.name} 超过 6MB，请压缩后重新上传。`);
+                        continue;
+                    }
+                    selectedImages.push({
+                        id: `${Date.now()}-${Math.random()}`,
+                        name: file.name,
+                        dataUrl: await readFileAsDataUrl(file)
+                    });
+                    continue;
+                }
+
+                if (!isSupportedDocumentName(file.name)) {
+                    showInputWarning(`${file.name} 不是支持的附件格式。`);
+                    continue;
+                }
+                if (selectedDocuments.length >= MAX_DOCUMENT_COUNT) {
+                    showInputWarning(`一次最多上传 ${MAX_DOCUMENT_COUNT} 个文档。`);
+                    continue;
+                }
+                if (file.size > MAX_DOCUMENT_BYTES) {
+                    showInputWarning(`${file.name} 超过 10MB，请压缩后重新上传。`);
+                    continue;
+                }
+                selectedDocuments.push({
+                    id: `${Date.now()}-${Math.random()}`,
+                    name: file.name,
+                    dataUrl: await readFileAsDataUrl(file)
+                });
+            }
+
+            renderAttachmentTray();
+            updateSendButtonState();
+        }
+
+        function isSupportedDocumentName(name) {
+            return /\.(pdf|docx|pptx|xlsx|rtf|odt|odp|ods|epub|txt|md|json|jsonc|js|jsx|ts|tsx|vue|html|css|scss|less|xml|yaml|yml|toml|csv|log|py|java|go|rs|php|rb|sh|ps1)$/i.test(name);
+        }
+
+        function readFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result ?? ''));
+                reader.onerror = () => reject(reader.error ?? new Error('图片读取失败'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /** 渲染待发送的图片和 @ 文件标签。 */
+        function renderAttachmentTray() {
+            attachmentTray.innerHTML = '';
+            attachmentTray.classList.toggle('visible', selectedImages.length > 0 || selectedDocuments.length > 0 || selectedFiles.length > 0);
+
+            for (const image of selectedImages) {
+                const chip = document.createElement('div');
+                chip.className = 'attachment-chip image';
+                chip.title = image.name;
+                const preview = document.createElement('img');
+                preview.src = image.dataUrl;
+                preview.alt = image.name;
+                chip.appendChild(preview);
+                chip.appendChild(createRemoveButton(() => {
+                    selectedImages = selectedImages.filter(item => item.id !== image.id);
+                    renderAttachmentTray();
+                    updateSendButtonState();
+                }));
+                attachmentTray.appendChild(chip);
+            }
+
+            for (const document of selectedDocuments) {
+                const chip = document.createElement('div');
+                chip.className = 'attachment-chip';
+                chip.title = document.name;
+                const name = document.createElement('span');
+                name.className = 'attachment-name';
+                name.innerText = `文件 ${document.name}`;
+                chip.appendChild(name);
+                chip.appendChild(createRemoveButton(() => {
+                    selectedDocuments = selectedDocuments.filter(item => item.id !== document.id);
+                    renderAttachmentTray();
+                    updateSendButtonState();
+                }));
+                attachmentTray.appendChild(chip);
+            }
+
+            for (const filePath of selectedFiles) {
+                const chip = document.createElement('div');
+                chip.className = 'attachment-chip';
+                chip.title = filePath;
+                const name = document.createElement('span');
+                name.className = 'attachment-name';
+                name.innerText = `@ ${filePath}`;
+                chip.appendChild(name);
+                chip.appendChild(createRemoveButton(() => {
+                    selectedFiles = selectedFiles.filter(item => item !== filePath);
+                    renderAttachmentTray();
+                    updateSendButtonState();
+                }));
+                attachmentTray.appendChild(chip);
+            }
+        }
+
+        function createRemoveButton(onClick) {
+            const button = document.createElement('button');
+            button.className = 'attachment-remove';
+            button.type = 'button';
+            button.title = '移除';
+            button.innerText = '×';
+            button.addEventListener('click', onClick);
+            return button;
+        }
+
+        /** 检测光标前的 @ 查询，并向扩展端请求真实工作区文件。 */
+        function scheduleFileMentionSearch() {
+            clearTimeout(mentionSearchTimer);
+            const mention = getActiveMention();
+            if (!mention) {
+                hideFileSuggestions();
+                return;
+            }
+
+            mentionSearchTimer = setTimeout(() => {
+                vscode.postMessage({ command: 'search-files', query: mention.query });
+            }, 120);
+        }
+
+        function getActiveMention() {
+            const cursor = textarea.selectionStart;
+            const beforeCursor = textarea.value.slice(0, cursor);
+            const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/);
+            if (!match) {
+                return null;
+            }
+
+            return {
+                query: match[2],
+                start: beforeCursor.length - match[2].length - 1,
+                end: cursor
+            };
+        }
+
+        function renderFileSuggestions(items) {
+            const mention = getActiveMention();
+            currentFileSuggestions = mention ? items.filter(item => !selectedFiles.includes(item)) : [];
+            activeSuggestionIndex = 0;
+            fileSuggestions.innerHTML = '';
+
+            if (currentFileSuggestions.length === 0) {
+                hideFileSuggestions();
+                return;
+            }
+
+            currentFileSuggestions.forEach((filePath, index) => {
+                const row = document.createElement('div');
+                row.className = `file-suggestion${index === 0 ? ' active' : ''}`;
+                row.title = filePath;
+                row.innerHTML = `<span>＠</span><span class="file-suggestion-path">${escapeHtml(filePath)}</span>`;
+                row.addEventListener('mousedown', event => {
+                    event.preventDefault();
+                    selectSuggestedFile(filePath);
+                });
+                fileSuggestions.appendChild(row);
+            });
+            fileSuggestions.classList.add('visible');
+        }
+
+        function moveActiveSuggestion(offset) {
+            if (currentFileSuggestions.length === 0) return;
+            activeSuggestionIndex = (activeSuggestionIndex + offset + currentFileSuggestions.length) % currentFileSuggestions.length;
+            [...fileSuggestions.children].forEach((row, index) => {
+                row.classList.toggle('active', index === activeSuggestionIndex);
+            });
+            fileSuggestions.children[activeSuggestionIndex]?.scrollIntoView({ block: 'nearest' });
+        }
+
+        function selectSuggestedFile(filePath) {
+            const mention = getActiveMention();
+            if (!mention) return;
+
+            const value = textarea.value;
+            textarea.value = `${value.slice(0, mention.start)}${value.slice(mention.end)}`;
+            textarea.selectionStart = mention.start;
+            textarea.selectionEnd = mention.start;
+            if (!selectedFiles.includes(filePath)) {
+                selectedFiles.push(filePath);
+            }
+            hideFileSuggestions();
+            renderAttachmentTray();
+            updateSendButtonState();
+            textarea.focus();
+        }
+
+        function hideFileSuggestions() {
+            currentFileSuggestions = [];
+            activeSuggestionIndex = 0;
+            fileSuggestions.innerHTML = '';
+            fileSuggestions.classList.remove('visible');
+        }
+
+        function showInputWarning(text) {
+            vscode.postMessage({ command: 'show-warning', text });
+        }
+
+        function createMessageAttachments(images, documents, files) {
+            return [
+                ...images.map(image => ({ kind: 'image', name: image.name, dataUrl: image.dataUrl })),
+                ...documents.map(document => ({ kind: 'document', name: document.name })),
+                ...files.map(filePath => ({ kind: 'file', name: filePath }))
+            ];
+        }
+
+        /** 历史记录不保存大体积 Base64，只保留图片名称和文件引用。 */
+        function createPersistedAttachments(attachments) {
+            return attachments.map(item => ({ kind: item.kind, name: item.name }));
+        }
+
+        function renderMessageAttachments(container, attachments) {
+            if (!attachments?.length) return;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message-attachments';
+
+            for (const item of attachments) {
+                if (item.kind === 'image' && item.dataUrl) {
+                    const image = document.createElement('img');
+                    image.className = 'message-image';
+                    image.src = item.dataUrl;
+                    image.alt = item.name;
+                    image.title = item.name;
+                    wrapper.appendChild(image);
+                    continue;
+                }
+
+                const chip = document.createElement('span');
+                chip.className = 'message-file';
+                chip.title = item.name;
+                chip.innerText = item.kind === 'image'
+                    ? `图片: ${item.name}`
+                    : item.kind === 'document' ? `文件: ${item.name}` : `@ ${item.name}`;
+                wrapper.appendChild(chip);
+            }
+            container.appendChild(wrapper);
+        }
+
+        function appendMessage(role, text, shouldSave = false, attachments = []) {
             const row = document.createElement('div');
             row.className = `message-row ${role}`;
             
@@ -566,16 +1091,19 @@
             if (role === 'agent') {
                 bubble.innerHTML = SimpleMarked.parse(text);
             } else {
-                bubble.innerText = text;
+                renderMessageAttachments(bubble, attachments);
+                const textElement = document.createElement('div');
+                textElement.innerText = text || '请查看附件';
+                bubble.appendChild(textElement);
             }
 
             row.appendChild(label);
             row.appendChild(bubble);
             scroller.appendChild(row);
-            scroller.scrollTop = scroller.scrollHeight;
+            scrollToBottomIfNeeded();
 
             if (shouldSave) {
-                chatHistory.push({ role, text });
+                chatHistory.push({ role, text, attachments: createPersistedAttachments(attachments) });
                 saveHistory();
             }
         }
@@ -632,6 +1160,37 @@
             }
         }
 
+        function renderFileTasks(items) {
+            fileTaskList.innerHTML = '';
+            fileTaskCount.innerText = '';
+            if (!items?.length) {
+                fileTaskPanel.classList.remove('visible');
+                return;
+            }
+
+            fileTaskPanel.classList.add('visible');
+            const finishedCount = items.filter(item => item.status === 'completed' || item.status === 'failed').length;
+            fileTaskCount.innerText = `${finishedCount}/${items.length}`;
+
+            for (const item of items) {
+                const row = document.createElement('div');
+                const visualStatus = item.status === 'failed' ? 'completed' : item.status;
+                row.className = `todo-item ${visualStatus}`;
+                row.title = item.note ? `${item.path}\n${item.note}` : item.path;
+
+                const dot = document.createElement('span');
+                dot.className = 'todo-dot';
+                const title = document.createElement('span');
+                title.className = 'todo-text';
+                title.innerText = item.path;
+                const state = document.createElement('span');
+                state.className = 'todo-state';
+                state.innerText = item.status === 'failed' ? '失败' : getTodoStateText(item.status);
+                row.append(dot, title, state);
+                fileTaskList.appendChild(row);
+            }
+        }
+
         function getTodoStateText(status) {
             if (status === 'completed') {
                 return '完成';
@@ -667,7 +1226,7 @@
         function showWaitingBubble() {
             ensureAgentBubble();
             currentActiveBubble.innerHTML = '<span class="waiting-text">正在等待模型响应<span class="waiting-dot">...</span></span>';
-            scroller.scrollTop = scroller.scrollHeight;
+            scrollToBottomIfNeeded();
         }
 
         function clearWaitingBubble() {
@@ -686,9 +1245,16 @@
             accumulatedReasoning = "";
             hasReasoningSignal = false;
             currentActiveBubble = null;
+            shouldAutoScroll = true;
+            selectedImages = [];
+            selectedDocuments = [];
+            selectedFiles = [];
+            renderAttachmentTray();
+            hideFileSuggestions();
             saveHistory();
             vscode.postMessage({ command: 'clear-history' });
             renderTodos([]);
+            renderFileTasks([]);
 
             scroller.innerHTML = '';
             appendWelcomeMessage();
@@ -696,7 +1262,7 @@
 
         function restoreHistory() {
             for (const item of chatHistory) {
-                appendMessage(item.role, item.text, false);
+                appendMessage(item.role, item.text, false, item.attachments ?? []);
             }
         }
 
@@ -711,15 +1277,22 @@
                 accumulatedReasoning = "";
                 hasReasoningSignal = false;
                 isShowingThinking = false;
+                shouldAutoScroll = true;
                 showWaitingBubble();
             } 
             else if (msg.command === 'todo-update') {
                 renderTodos(msg.items);
             }
+            else if (msg.command === 'file-suggestions') {
+                renderFileSuggestions(msg.items ?? []);
+            }
+            else if (msg.command === 'file-task-update') {
+                renderFileTasks(msg.items ?? []);
+            }
             else if (msg.command === 'stream-chunk') {
                 consumeStreamChunk(String(msg.text ?? ''));
                 renderActiveAgentBubble();
-                scroller.scrollTop = scroller.scrollHeight;
+                scrollToBottomIfNeeded();
             } 
             else if (msg.command === 'stream-end') {
                 if (currentActiveBubble) {
@@ -735,6 +1308,7 @@
                     isShowingThinking = false;
                 }
                 setGenerating(false);
+                shouldAutoScroll = true;
             }
         });
 

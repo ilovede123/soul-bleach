@@ -1,4 +1,6 @@
-import * as vscode from "vscode";
+import { getModelConfig } from './providers/config';
+import { OpenAICompatibleAdapter } from './providers/openai-compatible';
+import { logDiagnostic } from './diagnostics';
 
 /**
  * author:dengwei date:2026-07-08
@@ -6,109 +8,10 @@ import * as vscode from "vscode";
  * provider 用来选择常见厂商的默认接口，baseUrl 和 model 保留手动覆盖能力，
  * 这样同一套 Agent 逻辑可以在千问、智谱和内网 OpenAI-compatible 服务之间切换。
  */
-type ModelProvider = 'qwen' | 'zhipu-open' | 'zhipu-coding' | 'zai' | 'zhipu' | 'custom';
-type ModelPreset = 'provider-default' | 'qwen3.7-plus' | 'qwen3.7-max' | 'qwen-plus' | 'glm-5.2' | 'glm-5.2-1m' | 'glm-5.1' | 'glm-5' | 'glm-4.7' | 'glm-4.7-flash' | 'custom';
-
-type RequestPreset = {
-    baseUrl: string;
-    model: string;
-    extraBody?: Record<string, unknown>;
-};
-
-const QWEN_EXTRA_BODY = {
-    enable_thinking: false
-};
-
-const PROVIDER_PRESETS: Record<ModelProvider, RequestPreset> = {
-    qwen: {
-        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-        model: 'qwen3.7-plus',
-        extraBody: QWEN_EXTRA_BODY
-    },
-    'zhipu-open': {
-        baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-        model: 'glm-5.2'
-    },
-    'zhipu-coding': {
-        baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4/chat/completions',
-        model: 'glm-4.7'
-    },
-    zai: {
-        baseUrl: 'https://api.z.ai/api/paas/v4/chat/completions',
-        model: 'glm-5.2'
-    },
-    zhipu: {
-        baseUrl: 'https://api.z.ai/api/paas/v4/chat/completions',
-        model: 'glm-5.2'
-    },
-    custom: {
-        baseUrl: '',
-        model: ''
-    }
-};
-
-const MODEL_PRESETS: Record<Exclude<ModelPreset, 'provider-default'>, RequestPreset> = {
-    'qwen3.7-plus': {
-        baseUrl: PROVIDER_PRESETS.qwen.baseUrl,
-        model: 'qwen3.7-plus',
-        extraBody: QWEN_EXTRA_BODY
-    },
-    'qwen3.7-max': {
-        baseUrl: PROVIDER_PRESETS.qwen.baseUrl,
-        model: 'qwen3.7-max',
-        extraBody: QWEN_EXTRA_BODY
-    },
-    'qwen-plus': {
-        baseUrl: PROVIDER_PRESETS.qwen.baseUrl,
-        model: 'qwen-plus',
-        extraBody: QWEN_EXTRA_BODY
-    },
-    'glm-5.2': {
-        baseUrl: PROVIDER_PRESETS['zhipu-open'].baseUrl,
-        model: 'glm-5.2'
-    },
-    'glm-5.2-1m': {
-        baseUrl: PROVIDER_PRESETS['zhipu-coding'].baseUrl,
-        model: 'glm-5.2[1m]'
-    },
-    'glm-5.1': {
-        baseUrl: PROVIDER_PRESETS['zhipu-open'].baseUrl,
-        model: 'glm-5.1'
-    },
-    'glm-5': {
-        baseUrl: PROVIDER_PRESETS['zhipu-open'].baseUrl,
-        model: 'glm-5'
-    },
-    'glm-4.7': {
-        baseUrl: PROVIDER_PRESETS['zhipu-coding'].baseUrl,
-        model: 'glm-4.7'
-    },
-    'glm-4.7-flash': {
-        baseUrl: PROVIDER_PRESETS['zhipu-coding'].baseUrl,
-        model: 'glm-4.7-flash'
-    },
-    custom: {
-        baseUrl: '',
-        model: ''
-    }
-};
-
-export function getConfig() {
-    const config = vscode.workspace.getConfiguration('soul-bleach');
-    const provider = config.get<ModelProvider>('provider', 'qwen');
-    const modelPreset = config.get<ModelPreset>('modelPreset', 'provider-default');
-    const providerPreset = PROVIDER_PRESETS[provider] ?? PROVIDER_PRESETS.qwen;
-    const selectedPreset = modelPreset === 'provider-default'
-        ? providerPreset
-        : MODEL_PRESETS[modelPreset] ?? providerPreset;
-    const baseUrl = config.get<string>('baseUrl', '') || selectedPreset.baseUrl;
-    const apiKey = config.get<string>('apiKey', '');
-    const model = config.get<string>('model', '') || selectedPreset.model;
-    return { provider, modelPreset, baseUrl, apiKey, model, extraBody: selectedPreset.extraBody ?? {} };
-}
+const transport = new OpenAICompatibleAdapter();
 
 export async function completion(messages: any[], tools: any[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<any> {
-    const { baseUrl, apiKey, model, extraBody } = getConfig();
+    const { provider, baseUrl, apiKey, model, extraBody } = await getModelConfig();
     const headers: Record<string, string> = {
         'Content-Type': 'application/json'
     };
@@ -127,7 +30,8 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
 
     const body: Record<string, unknown> = {
         model,
-        messages,
+        // 只发送 OpenAI-compatible messages 协议允许的字段，避免把 finish_reason、debug 等响应字段带回服务端
+        messages: normalizeMessagesForRequest(messages),
         stream: true,
         ...extraBody
     };
@@ -137,12 +41,21 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
         body.tool_choice = 'auto';
     }
 
-    const response = await fetch(baseUrl, {
-        method: 'POST',
-        signal,
-        headers,
-        body: JSON.stringify(body)
-    });
+    const startedAt = Date.now();
+    const endpoint = getEndpointLabel(baseUrl);
+    logDiagnostic(`请求开始 provider=${provider} model=${model} endpoint=${endpoint} messages=${messages.length} tools=${tools.length}`);
+    let response: Response;
+    try {
+        response = await transport.request(baseUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body)
+        }, signal);
+    } catch (error: any) {
+        logDiagnostic(`请求失败 model=${model} endpoint=${endpoint} elapsed=${Date.now() - startedAt}ms error=${error?.message ?? String(error)}`);
+        throw error;
+    }
+    logDiagnostic(`收到响应 status=${response.status} model=${model} elapsed=${Date.now() - startedAt}ms`);
 
     if (!response.ok) {
         const errorText = await response.text();
@@ -189,6 +102,10 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
     }
     thinkFilter.flush();
 
+    if (isInterruptedWithoutPayload(fullMessage)) {
+        throw new Error(createInterruptedResponseError(fullMessage.finish_reason));
+    }
+
     if (!fullMessage.content) {
         delete fullMessage.content;
     } else {
@@ -201,7 +118,64 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
         };
     }
 
+    logDiagnostic(`解析完成 content=${Boolean(fullMessage.content)} toolCalls=${fullMessage.tool_calls?.length ?? 0} finishReason=${fullMessage.finish_reason ?? 'unknown'} elapsed=${Date.now() - startedAt}ms`);
+
     return fullMessage;
+}
+
+function getEndpointLabel(baseUrl: string): string {
+    try {
+        const url = new URL(baseUrl);
+        return `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+        return '[invalid-url]';
+    }
+}
+
+/**
+ * 清理准备发送给模型的历史消息。
+ * Agent 会把模型响应保存到上下文中，而响应对象可能包含 finish_reason、debug 等字段；
+ * 这些字段属于响应协议，不属于 messages 请求协议，严格的兼容服务会直接判定参数非法。
+ * @param messages Agent 内部保存的完整消息
+ * @returns 只包含标准请求字段的消息数组
+ */
+function normalizeMessagesForRequest(messages: any[]): any[] {
+    return messages.map(message => {
+        const role = message?.role;
+
+        if (role === 'assistant') {
+            const normalized: any = {
+                role: 'assistant',
+                content: message.content ?? ''
+            };
+
+            if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+                normalized.tool_calls = message.tool_calls.map((toolCall: any, index: number) => ({
+                    id: toolCall.id ?? `call_${index}`,
+                    type: 'function',
+                    function: {
+                        name: String(toolCall.function?.name ?? ''),
+                        arguments: stringifyToolArguments(toolCall.function?.arguments ?? '')
+                    }
+                }));
+            }
+
+            return normalized;
+        }
+
+        if (role === 'tool') {
+            return {
+                role: 'tool',
+                tool_call_id: String(message.tool_call_id ?? ''),
+                content: String(message.content ?? '')
+            };
+        }
+
+        return {
+            role: role === 'system' ? 'system' : 'user',
+            content: message.content ?? ''
+        };
+    });
 }
 
 function stripThinkBlocks(text: string): string {
@@ -291,6 +265,20 @@ function createAbortError(): Error {
     return error;
 }
 
+function isInterruptedWithoutPayload(message: any): boolean {
+    return /network_error|timeout|error/i.test(String(message.finish_reason ?? ''))
+        && !message.content
+        && !message.tool_calls?.length;
+}
+
+function createInterruptedResponseError(finishReason: string): string {
+    return [
+        `模型服务中断：${finishReason}`,
+        '服务端已经结束了这次流式响应，但没有返回可显示内容，也没有返回工具调用。',
+        '这不是前端气泡或工具解析的问题，优先检查模型服务、网关超时、模型并发限制或接口稳定性。'
+    ].join('\n');
+}
+
 function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) => void, debugLines?: string[]) {
     const trimmedLine = line.trim();
     if (!trimmedLine) {
@@ -356,7 +344,8 @@ function parseSseLine(line: string, fullMessage: any, onChunk?: (text: string) =
             const index = resolveToolCallIndex(fullMessage.tool_calls, tc);
 
             fullMessage.tool_calls[index] ??= {
-                id: tc.id,
+                // 部分兼容服务不返回调用 ID，补上稳定 ID 以便后续 tool 消息正确配对
+                id: tc.id ?? `call_${index}`,
                 type: 'function',
                 function: { name: tc.function?.name, arguments: '' }
             };
