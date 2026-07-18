@@ -10,17 +10,28 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const MAX_COMMAND_OUTPUT_LENGTH = 12_000;
 
 const ALLOWED_COMMANDS = [
-    /^corepack\s+pnpm\s+run\s+(compile|test|lint|build)(\s+--[\w=-]+)*$/,
-    /^pnpm\s+run\s+(compile|test|lint|build)(\s+--[\w=-]+)*$/,
-    /^npm\s+run\s+(compile|test|lint|build)(\s+--[\w=-]+)*$/,
-    /^yarn\s+(compile|test|lint|build)(\s+--[\w=-]+)*$/,
+    /^corepack\s+pnpm\s+run\s+(compile|test|lint|build|typecheck|check)(\s+--[\w=-]+)*$/,
+    /^pnpm\s+run\s+(compile|test|lint|build|typecheck|check)(\s+--[\w=-]+)*$/,
+    /^npm\s+run\s+(compile|test|lint|build|typecheck|check)(\s+--[\w=-]+)*$/,
+    /^yarn\s+(compile|test|lint|build|typecheck|check)(\s+--[\w=-]+)*$/,
     /^git\s+status(\s+--short|\s+-sb)?$/,
     /^git\s+diff(\s+--\s+[\w./\\-]+)?$/,
     /^git\s+diff\s+--stat$/,
     /^git\s+log\s+--oneline(\s+--max-count=\d+)?$/
 ];
 
+export type CommandResult = {
+    command: string;
+    exitCode: number;
+    output: string;
+    text: string;
+};
+
 export function runCommand(command: string): string {
+    return runCommandDetailed(command).text;
+}
+
+export function runCommandDetailed(command: string): CommandResult {
     const normalizedCommand = command.trim().replace(/\s+/g, ' ');
 
     if (!normalizedCommand) {
@@ -48,12 +59,12 @@ export function runCommand(command: string): string {
             stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        return formatCommandResult(normalizedCommand, 0, output);
+        return createCommandResult(normalizedCommand, 0, output);
     } catch (error: any) {
         const status = typeof error?.status === 'number' ? error.status : 1;
         const stdout = String(error?.stdout ?? '');
         const stderr = String(error?.stderr ?? '');
-        return formatCommandResult(normalizedCommand, status, [stdout, stderr].filter(Boolean).join('\n'));
+        return createCommandResult(normalizedCommand, status, [stdout, stderr].filter(Boolean).join('\n'));
     }
 }
 
@@ -81,16 +92,17 @@ function parseCommand(command: string): { executable: string; args: string[] } {
     return { executable, args };
 }
 
-function formatCommandResult(command: string, exitCode: number, output: string): string {
+function createCommandResult(command: string, exitCode: number, output: string): CommandResult {
     const normalizedOutput = output.trim() || '(命令没有输出)';
     const truncatedOutput = normalizedOutput.length > MAX_COMMAND_OUTPUT_LENGTH
         ? `${normalizedOutput.slice(0, MAX_COMMAND_OUTPUT_LENGTH)}\n...输出过长，已截断`
         : normalizedOutput;
 
-    return [
+    const text = [
         `命令: ${command}`,
         `退出码: ${exitCode}`,
         '',
         truncatedOutput
     ].join('\n');
+    return { command, exitCode, output: truncatedOutput, text };
 }

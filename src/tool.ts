@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { atomicWriteFile, hashText } from './agent/atomic-file';
+import { applyTextEdits, TextPatchEdit } from './agent/text-patch';
 
 /**
  * author:dengwei date:2026-07-08
@@ -18,7 +19,8 @@ const IGNORED_DIRS = new Set([
     '.vscode-test'
 ]);
 
-const DEFAULT_READ_MAX_LINES = 200;
+const DEFAULT_READ_MAX_LINES = 300;
+const MAX_READ_LINES = 500;
 const DEFAULT_SEARCH_MAX_RESULTS = 30;
 const DEFAULT_SEARCH_CONTEXT_LINES = 2;
 const MAX_SEARCH_FILE_SIZE = 1024 * 1024;
@@ -453,7 +455,7 @@ export function readFileWithLineNumbers(filePath: string, startLine = 1, endLine
     const lines = content.split(/\r?\n/);
     const totalLines = lines.length;
     const safeStartLine = Math.max(1, Math.floor(Number(startLine) || 1));
-    const safeMaxLines = Math.max(1, Math.floor(Number(maxLines) || DEFAULT_READ_MAX_LINES));
+    const safeMaxLines = Math.min(MAX_READ_LINES, Math.max(1, Math.floor(Number(maxLines) || DEFAULT_READ_MAX_LINES)));
     const requestedEndLine = endLine === undefined
         ? safeStartLine + safeMaxLines - 1
         : Math.floor(Number(endLine) || safeStartLine);
@@ -472,6 +474,7 @@ export function readFileWithLineNumbers(filePath: string, startLine = 1, endLine
 
     return [
         `文件: ${filePath}`,
+        `内容哈希: ${hashText(content)}`,
         `总行数: ${totalLines}`,
         `当前返回: 第 ${safeStartLine}-${limitedEndLine} 行`,
         '替换时 oldContent 只填写行号右侧的原始代码，不要包含行号和分隔符。',
@@ -479,6 +482,37 @@ export function readFileWithLineNumbers(filePath: string, startLine = 1, endLine
         '',
         body
     ].join('\n');
+}
+
+/** 获取当前任务尚未结束的修改快照，供独立审查器读取。 */
+export function getCurrentFileChangeSet(): FileChangeEntry[] {
+    if (!activeChangeSet) {
+        return getLastFileChangeSet();
+    }
+    return [...activeChangeSet.values()].map(entry => {
+        const fullPath = getWorkspacePath(entry.path);
+        return {
+            path: entry.path,
+            before: entry.before,
+            after: fs.existsSync(fullPath) ? fs.readFileSync(fullPath, 'utf-8') : ''
+        };
+    });
+}
+
+/**
+ * 根据稳定文本上下文应用多个编辑，不依赖容易漂移的行号。
+ * 所有 edit 会先在内存中完成校验，任意一处失败都不会写入文件。
+ */
+export function applyPatch(filePath: string, edits: TextPatchEdit[], expectedHash?: string): string {
+    const origin = readFile(filePath);
+    const currentHash = hashText(origin);
+    if (expectedHash && expectedHash !== currentHash) {
+        throw new Error(`补丁失败：文件哈希已变化。期望 ${expectedHash}，当前 ${currentHash}。请重新读取文件。`);
+    }
+
+    const result = applyTextEdits(origin, edits);
+    writeFile(filePath, result.content);
+    return `已对 ${filePath} 应用 ${result.applied} 个补丁，新内容哈希: ${hashText(result.content)}`;
 }
 
 
