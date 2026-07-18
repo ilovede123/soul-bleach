@@ -19,6 +19,7 @@ import { reviewChanges } from './agent/reviewer';
 import { loadAgentGuidance } from './agent/guidance';
 import { runSubagents } from './agent/subagent';
 import { cloneRunState, createRunState, restoreRunState } from './agent/run-state';
+import { ToolEfficiencyTracker } from './agent/tool-efficiency';
 
 export { AgentDocumentInput, AgentImageInput, AgentTaskResources, TodoItem } from './agent/types';
 
@@ -436,6 +437,8 @@ async function runAgentLoop(
         onFileProgress?.(items);
         onRunState?.({ fileTasks: items });
     }, resumeState?.fileTasks ?? []);
+    // 根据当前运行中的真实调用模式提醒模型合并小补丁、避免重复读取。
+    const toolEfficiency = new ToolEfficiencyTracker();
     let hasRequestedFileTaskCreation = false;
     const taskForToolRouting = resumeState?.task ?? getLatestUserTask(messages);
 
@@ -631,6 +634,10 @@ async function runAgentLoop(
                 if (name === 'apply_patch' || name === 'replace_range' || name === 'write_file') {
                     editRevision++;
                     onRunState?.({ changedFiles: [...changedFiles] });
+                }
+                const efficiencyNotice = toolEfficiency.observe(name, args);
+                if (efficiencyNotice) {
+                    result = `${result}\n\n${efficiencyNotice}`;
                 }
                 // 工具执行成功，重置错误计数
                 lastToolError = '';

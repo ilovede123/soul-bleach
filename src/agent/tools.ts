@@ -235,7 +235,7 @@ export const AGENT_TOOLS = [
         type: 'function',
         function: {
             name: 'read_file_with_line_numbers',
-            description: '按行号范围读取文件内容，返回带行号的片段。默认只返回一小段，避免把大文件一次性全部放入上下文。',
+            description: '按行号范围读取文件内容，返回带行号的片段。默认返回 300 行，批量注释、格式调整等机械任务可一次读取 300-500 行，避免按单个函数反复读取。',
             parameters: {
                 type: 'object',
                 properties: {
@@ -253,7 +253,7 @@ export const AGENT_TOOLS = [
                     },
                     maxLines: {
                         type: 'number',
-                        description: '可选，最多返回多少行，默认 200。只在确实需要更多上下文时调大'
+                        description: '可选，最多返回多少行，默认 300，最大 500。批量修改建议使用 300-500 行'
                     }
                 },
                 required: ['path']
@@ -264,7 +264,7 @@ export const AGENT_TOOLS = [
         type: 'function',
         function: {
             name: 'apply_patch',
-            description: '使用稳定文本上下文对一个已有文件应用一个或多个补丁。所有 edit 全部校验成功后才原子写入一次，不依赖行号，连续修改时优先使用。',
+            description: '使用稳定文本上下文对一个已有文件原子应用多个补丁。批量注释、重命名或重复调整时，应把同一读取批次内已经确定的 5-30 个修改合并到一次调用，不要逐个函数调用。',
             parameters: {
                 type: 'object',
                 properties: {
@@ -272,7 +272,7 @@ export const AGENT_TOOLS = [
                     expectedHash: { type: 'string', description: '最近一次 read_file_with_line_numbers 返回的内容哈希，建议传入以检测并发修改' },
                     edits: {
                         type: 'array',
-                        description: '按顺序执行的文本补丁，单次最多 30 个',
+                        description: '按顺序执行的文本补丁，单次最多 30 个；批量任务应尽量填入当前代码区块的全部修改',
                         items: {
                             type: 'object',
                             properties: {

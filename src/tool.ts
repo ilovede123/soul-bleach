@@ -19,7 +19,8 @@ const IGNORED_DIRS = new Set([
     '.vscode-test'
 ]);
 
-const DEFAULT_READ_MAX_LINES = 200;
+const DEFAULT_READ_MAX_LINES = 300;
+const MAX_READ_LINES = 500;
 const DEFAULT_SEARCH_MAX_RESULTS = 30;
 const DEFAULT_SEARCH_CONTEXT_LINES = 2;
 const MAX_SEARCH_FILE_SIZE = 1024 * 1024;
@@ -454,7 +455,7 @@ export function readFileWithLineNumbers(filePath: string, startLine = 1, endLine
     const lines = content.split(/\r?\n/);
     const totalLines = lines.length;
     const safeStartLine = Math.max(1, Math.floor(Number(startLine) || 1));
-    const safeMaxLines = Math.max(1, Math.floor(Number(maxLines) || DEFAULT_READ_MAX_LINES));
+    const safeMaxLines = Math.min(MAX_READ_LINES, Math.max(1, Math.floor(Number(maxLines) || DEFAULT_READ_MAX_LINES)));
     const requestedEndLine = endLine === undefined
         ? safeStartLine + safeMaxLines - 1
         : Math.floor(Number(endLine) || safeStartLine);

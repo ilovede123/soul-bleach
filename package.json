@@ -181,7 +181,7 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js out/test/text-patch.test.js out/test/subagent.test.js out/test/run-state.test.js"
+    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js out/test/text-patch.test.js out/test/tool-efficiency.test.js out/test/subagent.test.js out/test/run-state.test.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
