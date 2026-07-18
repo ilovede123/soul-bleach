@@ -10,9 +10,14 @@
 
 - 在 VS Code Activity Bar 中打开独立的「灵境」侧边栏。
 - 与 AI 助手进行流式对话。
-- 支持让模型通过工具调用列出文件、搜索文件、搜索文本、分段读取文件和写入文件。
+- 支持列出文件、搜索文件、搜索文本、分段读取、局部替换和写入文件。
+- 支持上传 UI 图片，让支持视觉输入的模型分析和实现界面。
+- 支持上传 DOCX、PPTX、XLSX、PDF、RTF、OpenDocument、EPUB 和常见 UTF-8 文本文件。
+- 在输入框中输入 `@`，可以搜索并明确引用工作区文件。
+- 复杂任务会创建执行计划；批量文件任务会展示真实文件清单和完成状态。
 - 支持受限命令验证，例如编译、测试、lint 和只读 git 检查。
-- Webview 重新加载后保留可见聊天记录。
+- 支持查看最近一次修改的 Diff，并在文件未被再次编辑时安全撤销。
+- 可见聊天记录和模型上下文均按工作区恢复，并自动压缩较早内容。
 - 支持停止正在生成的回复。
 - 支持清空当前聊天记录。
 
@@ -39,8 +44,9 @@ https://api.z.ai/api/paas/v4/chat/completions
 - `soul-bleach.provider`：模型服务商，可选 `qwen`、`zhipu-open`、`zhipu-coding`、`zai`、`custom`。
 - `soul-bleach.modelPreset`：常用模型下拉框，可选跟随服务商、千问模型、`glm-5.2`、`glm-5.2[1m]`、`glm-5.1`、`glm-5`、`glm-4.7`、`glm-4.7-flash` 或自定义。
 - `soul-bleach.baseUrl`：Chat Completions 完整接口地址。留空时使用 modelPreset 或 provider 的默认地址。
-- `soul-bleach.apiKey`：API Key。填写后会作为 `Authorization: Bearer ...` 请求头发送；无鉴权模型可以留空。
 - `soul-bleach.model`：自定义模型名称。留空时使用 modelPreset 或 provider 的默认模型；填写后会覆盖下拉框选择。
+
+API Key 不再以明文设置保存。请打开命令面板，运行 `灵境: 设置 API Key`；内网无鉴权服务无需设置。还可以运行 `灵境: 测试模型连接` 和 `灵境: 查看诊断日志` 排查接口问题。
 
 ### 智谱配置示例
 
@@ -49,7 +55,7 @@ https://api.z.ai/api/paas/v4/chat/completions
 1. 如果使用普通开放平台 Key，将 `soul-bleach.provider` 设置为 `zhipu-open`。
 2. 如果使用 GLM Coding Plan Key，将 `soul-bleach.provider` 设置为 `zhipu-coding`。
 3. 将 `soul-bleach.modelPreset` 设置为 `glm-5.2` 或 `glm-4.7`，也可以保持跟随服务商。
-4. 填写 `soul-bleach.apiKey`。
+4. 从命令面板运行 `灵境: 设置 API Key`。
 5. `soul-bleach.baseUrl` 可以留空，插件会使用对应服务商默认地址。
 6. `soul-bleach.model` 可以留空；如需其他支持 Function Calling 的 GLM 模型，再手动填写。
 
@@ -63,7 +69,7 @@ https://api.z.ai/api/paas/v4/chat/completions
 2. 搜索 `soul-bleach`。
 3. 选择 `soul-bleach.provider`。
 4. 选择 `soul-bleach.modelPreset`。
-5. 按需填写 `soul-bleach.apiKey`、`soul-bleach.baseUrl` 和 `soul-bleach.model`。
+5. 按需填写 `soul-bleach.baseUrl` 和 `soul-bleach.model`，并通过命令面板安全设置 API Key。
 6. 从 Activity Bar 打开「灵境」视图。
 7. 输入问题，或让智能体查看当前工作区文件。
 
@@ -75,15 +81,13 @@ https://api.z.ai/api/paas/v4/chat/completions
 
 修改文件后，智能体会优先重新读取修改区域确认结果，并可使用受限的 `run_command` 执行 `pnpm run compile`、`pnpm run lint`、`pnpm run test`、`git diff --stat` 等验证命令。
 
-当前聊天历史主要用于恢复侧边栏中可见的对话记录，暂未实现跨会话的长期模型记忆。
+模型上下文按当前工作区保存。图片 Base64 不会写入持久化状态，较早消息会按字符预算压缩成摘要。
 
 ### 更新记录
 
-#### 0.0.10
+#### 1.0.0
 
-增加搜索文件功能search_file
-
-初始开发版本。
+完成编码闭环、附件上传、`@文件`、任务进度、上下文管理、原子写入、Diff、撤销和模型诊断。
 
 ---
 
@@ -98,8 +102,12 @@ The extension supports Qwen, Zhipu, and custom OpenAI-compatible Chat Completion
 - Open a dedicated `灵境` assistant view from the VS Code Activity Bar.
 - Chat with an AI assistant using streamed responses.
 - Let the assistant list files, search files, search text, read file ranges, and write files through tool calls.
+- Upload UI images for vision-capable models, or upload DOCX, PPTX, XLSX, PDF, RTF, OpenDocument, EPUB, and UTF-8 text files.
+- Type `@` to search for and reference workspace files explicitly.
+- Track execution plans and deterministic per-file progress for batch tasks.
 - Run restricted verification commands such as compile, test, lint, and read-only git checks.
-- Preserve visible chat history while the webview is reloaded.
+- Review the latest changes in VS Code Diff and safely undo them when files have not changed again.
+- Restore visible chat history and model context per workspace, with automatic context compaction.
 - Stop an in-progress response.
 - Clear the current chat history.
 
@@ -126,8 +134,9 @@ This extension contributes the following settings:
 - `soul-bleach.provider`: Model provider. Supported values are `qwen`, `zhipu-open`, `zhipu-coding`, `zai`, and `custom`.
 - `soul-bleach.modelPreset`: Common model dropdown. Supported values include provider default, Qwen models, `glm-5.2`, `glm-5.2[1m]`, `glm-5.1`, `glm-5`, `glm-4.7`, `glm-4.7-flash`, and custom.
 - `soul-bleach.baseUrl`: Full Chat Completions endpoint. Leave it empty to use the selected model preset or provider default.
-- `soul-bleach.apiKey`: Optional API key. When set, it is sent as the `Authorization: Bearer ...` request header. Leave it empty for unauthenticated internal endpoints.
 - `soul-bleach.model`: Custom model name. Leave it empty to use the selected model preset or provider default. When set, it overrides the dropdown selection.
+
+API keys are stored with VS Code SecretStorage. Run `灵境: 设置 API Key` from the Command Palette. Unauthenticated internal endpoints do not require a key. Use `灵境: 测试模型连接` and `灵境: 查看诊断日志` for troubleshooting.
 
 ### Zhipu Configuration
 
@@ -136,7 +145,7 @@ To use the official Zhipu API:
 1. Use `zhipu-open` for a regular Zhipu Open Platform key.
 2. Use `zhipu-coding` for a GLM Coding Plan key.
 3. Set `soul-bleach.modelPreset` to `glm-5.2` or `glm-4.7`, or keep provider default.
-4. Fill in `soul-bleach.apiKey`.
+4. Run `灵境: 设置 API Key` from the Command Palette.
 5. Leave `soul-bleach.baseUrl` empty to use the built-in endpoint.
 6. Leave `soul-bleach.model` empty, or set another GLM model that supports Function Calling.
 
@@ -150,7 +159,7 @@ No public Zhipu `glm-4.8` model was confirmed in the current documentation. Ment
 2. Search for `soul-bleach`.
 3. Choose `soul-bleach.provider`.
 4. Choose `soul-bleach.modelPreset`.
-5. Fill in `soul-bleach.apiKey`, `soul-bleach.baseUrl`, and `soul-bleach.model` as needed.
+5. Fill in `soul-bleach.baseUrl` and `soul-bleach.model` as needed, then set the API key from the Command Palette.
 6. Open the `灵境` view from the Activity Bar.
 7. Ask the assistant a question or request a workspace file inspection.
 
@@ -162,10 +171,10 @@ Code files are usually handled by locating key lines with `search_text` first, t
 
 After edits, the assistant should reread the changed range and can use the restricted `run_command` tool for commands such as `pnpm run compile`, `pnpm run lint`, `pnpm run test`, and `git diff --stat`.
 
-Chat history currently preserves the visible sidebar conversation state. Long-term model memory across sessions is not enabled yet.
+Model context is stored per workspace. Image Base64 is not persisted, and older messages are compacted into a summary when the character budget is reached.
 
 ### Release Notes
 
-#### 0.0.1
+#### 1.0.0
 
-Initial development release.
+Adds the complete coding loop, attachments, `@file`, task progress, context management, atomic writes, Diff, undo, and model diagnostics.

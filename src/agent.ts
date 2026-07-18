@@ -1,7 +1,7 @@
 // 模型补全接口，负责发送请求并接收流式消息
 import { completion } from './request';
 // 文件操作工具集合：搜索文件、列出目录、按行号读取文件
-import { findFiles, listFiles, readFileWithLineNumbers } from './tool';
+import { beginFileChangeSet, findFiles, finishFileChangeSet, listFiles, readFileWithLineNumbers } from './tool';
 // 上下文压缩：在会话消息过长时进行裁剪，避免超出模型上下文窗口
 import { compactMessages } from './agent/context';
 // 任务规划相关：创建计划、设置当前/最终待办、判断是否需要规划
@@ -11,9 +11,10 @@ import { createInitialMessages } from './agent/prompts';
 // Agent 可用的工具声明列表及工具执行入口
 import { AGENT_TOOLS, executeAgentTool } from './agent/tools';
 // 类型定义：进度回调与待办项
-import { ProgressHandler, TodoItem } from './agent/types';
+import { AgentTaskResources, FileProgressHandler, FileTaskStatus, ProgressHandler, TodoItem } from './agent/types';
+import { FileTaskTracker } from './agent/work-items';
 
-export { TodoItem } from './agent/types';
+export { AgentDocumentInput, AgentImageInput, AgentTaskResources, TodoItem } from './agent/types';
 
 /**
  * author:dengwei date:2026-07-08
@@ -39,11 +40,28 @@ const EXECUTION_PLAN_MARKER = '[Soul Bleach Execution Plan]';
  */
 export class AgentSession {
     // 会话消息列表，初始包含基础消息，随任务执行不断追加 user/assistant/tool 消息
-    private messages: any[] = createInitialMessages();
+    private messages: any[];
+
+    constructor(savedMessages?: any[]) {
+        const initialMessages = createInitialMessages();
+        const history = Array.isArray(savedMessages)
+            ? savedMessages.filter(message => message && message.role !== 'system')
+            : [];
+        this.messages = [...initialMessages, ...history];
+        this.trimMessages();
+    }
 
     /** 清空会话历史，重置为初始基础消息 */
     clear() {
         this.messages = createInitialMessages();
+    }
+
+    /** 导出适合写入 workspaceState 的会话内容，不保存图片 Base64。 */
+    exportState(): any[] {
+        return compactMessages(this.messages).map(message => ({
+            ...message,
+            content: sanitizePersistedContent(message.content)
+        }));
     }
 
     /**
@@ -54,15 +72,27 @@ export class AgentSession {
      * @param onProgress 进度回调，用于更新待办列表状态
      * @returns 模型最终回复的文本
      */
-    async run(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
+    async run(
+        task: string,
+        onChunk?: (text: string) => void,
+        signal?: AbortSignal,
+        onProgress?: ProgressHandler,
+        resources?: AgentTaskResources,
+        onFileProgress?: FileProgressHandler
+    ): Promise<string> {
         // 根据任务复杂度判断是否需要创建待办计划
         const todos = await createTodosIfNeeded(task, signal, onProgress);
-        // 将用户任务追加到消息列表
-        this.messages.push({ role: 'user', content: task });
-        // 将 Planner 的步骤同步给执行模型，让模型知道完整范围和剩余工作
-        appendExecutionPlan(this.messages, todos);
-        // 进入 Agent 主循环，反复调用模型和工具直到任务完成
-        const result = await runAgentLoop(this.messages, onChunk, signal, todos, onProgress);
+        // 把用户需求和执行计划合并成同一条 user 消息，避免在对话中间插入 system 角色
+        this.messages.push({ role: 'user', content: createTaskMessage(task, todos, resources) });
+        // 每次任务独立记录修改快照，无论成功、失败或取消都保留可撤销信息
+        beginFileChangeSet();
+        let result: string;
+        try {
+            // 进入 Agent 主循环，反复调用模型和工具直到任务完成
+            result = await runAgentLoop(this.messages, onChunk, signal, todos, onProgress, onFileProgress);
+        } finally {
+            finishFileChangeSet();
+        }
         // 标记所有待办为已完成
         completeAllTodos(todos, onProgress);
         // 压缩历史消息，保留关键上下文，裁剪冗余内容
@@ -88,9 +118,14 @@ export class AgentSession {
 export async function runAgent(task: string, onChunk?: (text: string) => void, signal?: AbortSignal, onProgress?: ProgressHandler): Promise<string> {
     const messages: any[] = createInitialMessages();
     const todos = await createTodosIfNeeded(task, signal, onProgress);
-    messages.push({ role: 'user', content: task });
-    appendExecutionPlan(messages, todos);
-    const result = await runAgentLoop(messages, onChunk, signal, todos, onProgress);
+    messages.push({ role: 'user', content: createTaskMessage(task, todos) });
+    beginFileChangeSet();
+    let result: string;
+    try {
+        result = await runAgentLoop(messages, onChunk, signal, todos, onProgress);
+    } finally {
+        finishFileChangeSet();
+    }
     completeAllTodos(todos, onProgress);
     return result;
 }
@@ -117,28 +152,80 @@ async function createTodosIfNeeded(task: string, signal?: AbortSignal, onProgres
     return todos;
 }
 
-/**
- * 把 Planner 生成的步骤写入执行模型上下文。
- * 以前这些步骤只显示在界面中，执行模型看不到，所以中途很容易误以为工作已经完成。
- * @param messages 当前会话消息
- * @param todos Planner 生成的待办步骤
- */
-function appendExecutionPlan(messages: any[], todos?: TodoItem[]) {
-    if (!todos?.length) {
-        return;
+function sanitizePersistedContent(content: unknown): unknown {
+    if (!Array.isArray(content)) {
+        return content;
     }
 
-    const planLines = todos.map((todo, index) => `${index + 1}. ${todo.title}`);
-    messages.push({
-        role: 'system',
-        content: [
+    const imageCount = content.filter(item => item?.type === 'image_url').length;
+    const textItems = content
+        .filter(item => item?.type === 'text')
+        .map(item => ({ type: 'text', text: String(item.text ?? '') }));
+    if (imageCount > 0) {
+        textItems.push({ type: 'text', text: `[历史消息中曾上传 ${imageCount} 张图片，图片数据未持久化]` });
+    }
+    return textItems;
+}
+
+/**
+ * 生成发送给执行模型的任务消息。
+ * 用户原始需求和执行计划放在同一条 user 消息中，既能让模型掌握完整步骤，
+ * 也能兼容要求 system 角色只能出现在消息开头的 OpenAI-compatible 服务。
+ * @param task 用户原始需求
+ * @param todos Planner 生成的待办步骤
+ * @param resources 用户上传的图片和通过 @ 引用的文件
+ * @returns 纯文本消息或 OpenAI-compatible 多模态内容数组
+ */
+function createTaskMessage(task: string, todos?: TodoItem[], resources?: AgentTaskResources): string | any[] {
+    const referencedFiles = resources?.referencedFiles?.filter(Boolean) ?? [];
+    const images = resources?.images?.filter(image => image.dataUrl) ?? [];
+    const documents = resources?.documents?.filter(document => document.text) ?? [];
+    const planLines = todos?.map((todo, index) => `${index + 1}. ${todo.title}`) ?? [];
+    const textParts = [task];
+
+    if (referencedFiles.length > 0) {
+        textParts.push(
+            '',
+            '[Soul Bleach Referenced Files]',
+            '用户通过 @ 明确引用了下面的工作区文件。处理需求前优先直接读取这些路径，不要重新猜测文件名：',
+            ...referencedFiles.map(file => `- ${file}`)
+        );
+    }
+
+    if (documents.length > 0) {
+        textParts.push('', '[Soul Bleach Uploaded Documents]');
+        for (const document of documents) {
+            textParts.push(
+                `\n--- 上传文件: ${document.name} ---`,
+                document.text,
+                `--- 文件结束: ${document.name} ---`
+            );
+        }
+    }
+
+    if (planLines.length > 0) {
+        textParts.push(
+            '',
             EXECUTION_PLAN_MARKER,
             '下面是本次任务的完整执行计划。它不仅用于界面展示，也是判断任务是否完成的依据：',
             ...planLines,
             '开始执行每个步骤前，必须调用 update_plan，并把该步骤从 1 开始的序号传入 activeStep。',
             '处理长任务时必须持续使用工具推进。只有确认原始需求和全部计划步骤都完成后，才能输出最终总结。'
-        ].join('\n')
-    });
+        );
+    }
+
+    const textContent = textParts.join('\n');
+    if (images.length === 0) {
+        return textContent;
+    }
+
+    return [
+        { type: 'text', text: textContent },
+        ...images.map(image => ({
+            type: 'image_url',
+            image_url: { url: image.dataUrl }
+        }))
+    ];
 }
 
 /**
@@ -175,7 +262,14 @@ function compactMessagesInPlace(messages: any[]) {
  * @param onProgress 进度回调
  * @returns 模型最终回复文本或停止原因说明
  */
-async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, signal?: AbortSignal, todos?: TodoItem[], onProgress?: ProgressHandler): Promise<string> {
+async function runAgentLoop(
+    messages: any[],
+    onChunk?: (text: string) => void,
+    signal?: AbortSignal,
+    todos?: TodoItem[],
+    onProgress?: ProgressHandler,
+    onFileProgress?: FileProgressHandler
+): Promise<string> {
     // 上一次工具错误的标识，用于检测是否为重复错误
     let lastToolError = '';
     // 同一工具错误连续出现的次数
@@ -192,6 +286,9 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
     let reviewedEditRevision = 0;
     // 模型是否已经主动调用 update_plan；主动上报后不再使用工具名猜测进度
     let hasExplicitPlanProgress = false;
+    // 批量目录任务由程序持有文件清单，完成判定不再依赖模型记忆
+    const fileTaskTracker = new FileTaskTracker(onFileProgress);
+    let hasRequestedFileTaskCreation = false;
 
     for (let i = 0; i < MAX_AGENT_ITERATIONS; i++) {
         // 每轮开始前检查是否已被用户取消
@@ -230,6 +327,24 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                 continue;
             }
 
+            const originalTask = getLatestUserTask(messages);
+            if (requiresFileTaskList(originalTask) && !fileTaskTracker.hasTasks) {
+                if (hasRequestedFileTaskCreation) {
+                    throw new Error('批量任务没有创建文件清单。请明确提供目标目录，或缩小任务范围后重试。');
+                }
+                hasRequestedFileTaskCreation = true;
+                messages.push({
+                    role: 'user',
+                    content: '这是批量文件任务。请先调用 create_file_tasks，传入目标目录和扩展名，建立真实文件清单后再继续。'
+                });
+                continue;
+            }
+
+            if (fileTaskTracker.hasOpenTasks) {
+                messages.push({ role: 'user', content: fileTaskTracker.createRemainingMessage() });
+                continue;
+            }
+
             // 只要最新一批修改还没有经过完成检查，就不能把阶段性说明当成最终答案
             if (shouldRequestPostEditCheck(changedFiles, editRevision, reviewedEditRevision)) {
                 reviewedEditRevision = editRevision;
@@ -261,7 +376,19 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                 if (toolCall.function) {
                     toolCall.function.arguments = JSON.stringify(args);
                 }
-                if (name === 'update_plan') {
+                if (name === 'create_file_tasks') {
+                    result = fileTaskTracker.create(
+                        String(args.path ?? '.'),
+                        Array.isArray(args.extensions) ? args.extensions.map(String) : [],
+                        Number(args.maxFiles) || 200
+                    );
+                } else if (name === 'update_file_task') {
+                    result = fileTaskTracker.update(
+                        String(args.path ?? ''),
+                        String(args.status ?? 'pending') as FileTaskStatus,
+                        args.note === undefined ? undefined : String(args.note)
+                    );
+                } else if (name === 'update_plan') {
                     // 执行模型主动上报当前步骤，这是计划进度的主要数据来源
                     result = updateTodoProgress(todos, onProgress, Number(args.activeStep));
                     hasExplicitPlanProgress = Boolean(todos?.length);
@@ -276,6 +403,7 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
                     updatePostEditState(name, args, changedFiles, confirmedFiles, () => {
                         hasPostEditValidation = true;
                     });
+                    fileTaskTracker.observeTool(name, args);
                 }
                 // 修改版本只在工具成功执行后递增，失败的替换不会触发虚假的完成检查
                 if (name === 'replace_range' || name === 'write_file') {
@@ -319,6 +447,12 @@ async function runAgentLoop(messages: any[], onChunk?: (text: string) => void, s
         '通常原因是模型反复调用工具但没有根据工具结果修正参数。',
         '建议缩小需求范围，或先让智能体重新读取目标文件后再修改。'
     ].join('\n'));
+}
+
+/** 判断用户需求是否属于必须建立真实文件清单的批量任务。 */
+function requiresFileTaskList(task: string): boolean {
+    return /整个|全部|所有|批量|文件夹|目录|每个|一组|一批|all\s+files|folder|directory|batch/i.test(task)
+        && /文件|代码|组件|页面|注释|修改|处理|检查|重构|优化|file|component|code/i.test(task);
 }
 
 /**
@@ -558,7 +692,20 @@ function getLatestUserTask(messages: any[]): string {
             && !content.startsWith(POST_EDIT_CHECK_MARKER);
     });
 
-    return String(message?.content ?? '');
+    // 多模态消息先提取 text 内容，再去掉内部执行计划，只保留用户原始需求和文件引用
+    return getTextMessageContent(message?.content).split(EXECUTION_PLAN_MARKER)[0].trim();
+}
+
+/** 从字符串或多模态 content 数组中提取文本部分。 */
+function getTextMessageContent(content: unknown): string {
+    if (!Array.isArray(content)) {
+        return String(content ?? '');
+    }
+
+    return content
+        .filter(item => item?.type === 'text')
+        .map(item => String(item.text ?? ''))
+        .join('\n');
 }
 
 /**

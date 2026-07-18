@@ -6,11 +6,13 @@
 const CONTEXT_SUMMARY_MARKER = '[Soul Bleach Context Summary]';
 const MAX_CONTEXT_MESSAGES = 42;
 const RECENT_CONTEXT_MESSAGES = 24;
+const MAX_CONTEXT_CHARACTERS = 90_000;
+const RECENT_CONTEXT_CHARACTERS = 55_000;
 const MAX_SUMMARY_LENGTH = 6000;
 const MAX_MESSAGE_SNIPPET_LENGTH = 700;
 
 export function compactMessages(messages: any[]): any[] {
-    if (messages.length <= MAX_CONTEXT_MESSAGES) {
+    if (messages.length <= MAX_CONTEXT_MESSAGES && estimateMessagesSize(messages) <= MAX_CONTEXT_CHARACTERS) {
         return messages;
     }
 
@@ -26,7 +28,8 @@ export function compactMessages(messages: any[]): any[] {
     return [
         systemMessage,
         {
-            role: 'system',
+            // 摘要作为新的 user 上下文，保证压缩后第一个非 system 消息仍然是 user
+            role: 'user',
             content: `${CONTEXT_SUMMARY_MARKER}\n${summary}`
         },
         ...recentMessages
@@ -34,9 +37,20 @@ export function compactMessages(messages: any[]): any[] {
 }
 
 function findRecentStart(messages: any[]): number {
-    let start = Math.max(1, messages.length - RECENT_CONTEXT_MESSAGES);
+    let start = messages.length;
+    let characters = 0;
 
-    while (start < messages.length && messages[start]?.role === 'tool') {
+    while (start > 1 && messages.length - start < RECENT_CONTEXT_MESSAGES) {
+        const nextSize = estimateMessageSize(messages[start - 1]);
+        if (characters > 0 && characters + nextSize > RECENT_CONTEXT_CHARACTERS) {
+            break;
+        }
+        characters += nextSize;
+        start--;
+    }
+
+    // 摘要后从一条 user 消息重新开始，避免留下没有对应调用的 tool 消息。
+    while (start < messages.length && messages[start]?.role !== 'user') {
         start++;
     }
 
@@ -53,7 +67,10 @@ function extractExistingSummary(messages: any[]): string {
 }
 
 function isContextSummary(message: any): boolean {
-    return message?.role === 'system' && typeof message.content === 'string' && message.content.startsWith(CONTEXT_SUMMARY_MARKER);
+    // 同时识别旧版 system 摘要，兼容扩展更新前已经存在于内存中的会话
+    return (message?.role === 'user' || message?.role === 'system')
+        && typeof message.content === 'string'
+        && message.content.startsWith(CONTEXT_SUMMARY_MARKER);
 }
 
 function buildContextSummary(previousSummary: string, messages: any[]): string {
@@ -80,7 +97,7 @@ function summarizeMessage(message: any): string {
     }
 
     if (message.role === 'user') {
-        return `用户需求: ${truncateText(message.content, MAX_MESSAGE_SNIPPET_LENGTH)}`;
+        return `用户需求: ${truncateText(extractMessageContent(message.content), MAX_MESSAGE_SNIPPET_LENGTH)}`;
     }
 
     if (message.role === 'assistant') {
@@ -108,6 +125,23 @@ function summarizeMessage(message: any): string {
     return '';
 }
 
+/**
+ * 从纯文本或多模态消息中提取可写入摘要的文本。
+ * 图片本体不进入摘要，只记录图片数量，避免 Base64 数据占满上下文。
+ */
+function extractMessageContent(content: unknown): string {
+    if (!Array.isArray(content)) {
+        return String(content ?? '');
+    }
+
+    const text = content
+        .filter(item => item?.type === 'text')
+        .map(item => String(item.text ?? ''))
+        .join('\n');
+    const imageCount = content.filter(item => item?.type === 'image_url').length;
+    return imageCount > 0 ? `${text}\n用户上传图片: ${imageCount} 张` : text;
+}
+
 function truncateText(value: unknown, maxLength: number): string {
     const text = String(value ?? '').replace(/\s+/g, ' ').trim();
 
@@ -116,4 +150,16 @@ function truncateText(value: unknown, maxLength: number): string {
     }
 
     return `${text.slice(0, maxLength)}...`;
+}
+
+function estimateMessagesSize(messages: any[]): number {
+    return messages.reduce((total, message) => total + estimateMessageSize(message), 0);
+}
+
+function estimateMessageSize(message: any): number {
+    try {
+        return JSON.stringify(message).length;
+    } catch {
+        return String(message?.content ?? '').length;
+    }
 }

@@ -1,14 +1,18 @@
+/**
+ * author:dengwei date:2026-07-18
+ * 扩展激活入口，负责注册侧边栏、命令以及模型密钥管理。
+ */
 import * as vscode from 'vscode';
 import { runAgent } from './agent';
-import { listFiles } from './tool';
 import { SoulBleachPanel } from './pannel';
+import { clearApiKey, initializeModelConfig, setApiKey } from './providers/config';
+import { initializeDiagnostics, showDiagnostics } from './diagnostics';
+import { completion } from './request';
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
 	console.log('Soul Bleach is active.');
-
-	const disposable = vscode.commands.registerCommand('soul-bleach.helloWorld', () => {
-		vscode.window.showInformationMessage('灵境已启动');
-	});
+	initializeDiagnostics(context);
+	await initializeModelConfig(context.secrets);
 
 	const outputChannel = vscode.window.createOutputChannel('Soul Bleach');
 	const agentCommand = vscode.commands.registerCommand('soul-bleach.run', async () => {
@@ -31,15 +35,47 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	const testCommand = vscode.commands.registerCommand('soul-bleach.test', async () => {
+	const setApiKeyCommand = vscode.commands.registerCommand('soul-bleach.setApiKey', async () => {
+		const value = await vscode.window.showInputBox({
+			prompt: '输入当前模型服务商的 API Key',
+			placeHolder: '内网无鉴权服务可以不设置',
+			password: true,
+			ignoreFocusOut: true
+		});
+		if (value === undefined) {
+			return;
+		}
+		if (!value.trim()) {
+			await clearApiKey();
+			vscode.window.showInformationMessage('已清除灵境 API Key。');
+			return;
+		}
+		await setApiKey(value);
+		vscode.window.showInformationMessage('灵境 API Key 已安全保存。');
+	});
+
+	const clearApiKeyCommand = vscode.commands.registerCommand('soul-bleach.clearApiKey', async () => {
+		await clearApiKey();
+		vscode.window.showInformationMessage('已清除灵境 API Key。');
+	});
+
+	const testConnectionCommand = vscode.commands.registerCommand('soul-bleach.testConnection', async () => {
 		try {
-			const result = listFiles('.');
-			vscode.window.showInformationMessage(`${result},---result`);
-			console.log(result, '-----result');
-		} catch (e: any) {
-			vscode.window.showErrorMessage(e.message);
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: '正在测试灵境模型连接...'
+			}, () => completion([
+				{ role: 'system', content: '这是连接测试，只回复 OK。' },
+				{ role: 'user', content: '测试连接' }
+			], []));
+			vscode.window.showInformationMessage('模型连接成功。');
+		} catch (error: any) {
+			vscode.window.showErrorMessage(`模型连接失败: ${error?.message ?? String(error)}`);
+			showDiagnostics();
 		}
 	});
+
+	const showDiagnosticsCommand = vscode.commands.registerCommand('soul-bleach.showDiagnostics', showDiagnostics);
 
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
@@ -47,9 +83,11 @@ export function activate(context: vscode.ExtensionContext) {
 			new SoulBleachPanel(context)
 		)
 	);
-	context.subscriptions.push(disposable);
 	context.subscriptions.push(agentCommand);
-	context.subscriptions.push(testCommand);
+	context.subscriptions.push(setApiKeyCommand);
+	context.subscriptions.push(clearApiKeyCommand);
+	context.subscriptions.push(testConnectionCommand);
+	context.subscriptions.push(showDiagnosticsCommand);
 }
 
 export function deactivate() { }

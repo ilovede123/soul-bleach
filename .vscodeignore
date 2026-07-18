@@ -1,6 +1,12 @@
 .vscode/**
 .vscode-test/**
+node_modules/**
 src/**
+out/**
+!out/extension.js
+media/icon-concepts/**
+pnpm-lock.yaml
+pnpm-workspace.yaml
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md

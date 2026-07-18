@@ -10,6 +10,38 @@ export const AGENT_TOOLS = [
     {
         type: 'function',
         function: {
+            name: 'create_file_tasks',
+            description: '当用户要求处理整个目录、某类文件或批量文件时，先创建确定性的文件任务清单。任务未全部完成前不能结束。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: '工作区内的目标文件或目录路径' },
+                    extensions: { type: 'array', items: { type: 'string' }, description: '可选扩展名列表，例如 ["vue", "ts"]' },
+                    maxFiles: { type: 'number', description: '最多纳入多少文件，默认 200，最大 500' }
+                },
+                required: ['path']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'update_file_task',
+            description: '更新批量文件清单中的单个文件状态。文件成功写入会自动完成；无需修改或处理失败时使用此工具明确更新。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: '清单中的文件路径' },
+                    status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'failed'], description: '文件处理状态' },
+                    note: { type: 'string', description: '可选说明' }
+                },
+                required: ['path', 'status']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
             name: 'update_plan',
             description: '更新当前任务计划的执行进度。开始执行某个计划步骤前调用，传入该步骤从 1 开始的序号；此前步骤会标记为完成，当前步骤显示为正在执行。',
             parameters: {

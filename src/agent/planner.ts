@@ -18,6 +18,12 @@ export function shouldCreatePlan(task: string): boolean {
         return false;
     }
 
+    // 用户明确要求执行修改、检查、构建等动作时直接创建计划，
+    // 不再强制要求句子里同时出现“代码、文件、项目”等技术对象词
+    if (isExplicitExecutionTask(text)) {
+        return true;
+    }
+
     if (isQuestionOnly(text)) {
         return false;
     }
@@ -147,6 +153,21 @@ function findFirstTodoIndex(titles: string[], pattern: RegExp): number | undefin
 
 function isSimpleChat(text: string): boolean {
     return /^(你好|您好|hi|hello|hey|在吗|谢谢|多谢|好的|好|ok|嗯|明白|收到|可以|测试|test)[。！!.\s]*$/i.test(text);
+}
+
+/**
+ * 判断用户是否明确要求 Agent 执行一项工作。
+ * 常见自然表达不一定包含“代码、文件”等对象词，例如“给 App.vue 加中文注释”，
+ * 只要同时存在命令语气和执行动作，就应该进入任务拆解。
+ * @param text 用户输入
+ * @returns 是否属于明确执行任务
+ */
+function isExplicitExecutionTask(text: string): boolean {
+    const hasDirective = /帮我|请|麻烦|需要你|替我|直接|做一下|处理一下|跑一下|把|给/i.test(text);
+    const hasAction = /编写|开发|实现|新增|添加|增加|补充|加.{0,6}注释|注释|修改|改成|改为|修复|优化|重构|删除|移除|替换|生成|完善|调整|接入|封装|抽离|拆分|检查|排查|验证|运行|编译|构建|打包|测试|提交|发布|安装|write|edit|fix|update|implement|refactor|add|remove|replace|build|test|run|commit|publish/i.test(text);
+    const startsWithAction = /^(?:先|再|然后)?\s*(?:编写|开发|实现|新增|添加|增加|补充|注释|修改|修复|优化|重构|删除|移除|替换|生成|完善|调整|接入|封装|抽离|拆分|检查|排查|验证|运行|编译|构建|打包|测试|提交|发布|安装|write|edit|fix|update|implement|refactor|add|remove|replace|build|test|run|commit|publish)/i.test(text);
+
+    return hasAction && (hasDirective || startsWithAction);
 }
 
 function isQuestionOnly(text: string): boolean {

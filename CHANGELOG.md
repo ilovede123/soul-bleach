@@ -1,9 +1,14 @@
-# Change Log
+# 更新记录
 
-All notable changes to the "soul-bleach" extension will be documented in this file.
+## 1.0.0 - 2026-07-18
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Initial release
+- 完成读取、搜索、局部替换、写入和修改后验证的编码闭环。
+- 增加复杂任务规划、真实文件任务清单和逐步进度展示。
+- 支持图片、DOCX、PPTX、XLSX、PDF、RTF、OpenDocument、EPUB 和 UTF-8 文本附件。
+- 支持在输入框中使用 `@` 搜索并引用工作区文件。
+- 增加原子写入、修改快照、原生 Diff 和最近一次任务撤销。
+- 增加工作区信任检查、真实路径边界检查和受限命令执行。
+- API Key 改用 VS Code SecretStorage 保存，并兼容迁移旧版明文设置。
+- 增加模型请求超时、瞬时错误重试、连接测试和脱敏诊断日志。
+- 增加按工作区恢复的模型上下文、字符预算压缩和长任务防循环机制。
+- 增加核心自动化测试，覆盖原子写入、上下文压缩和附件解析。
