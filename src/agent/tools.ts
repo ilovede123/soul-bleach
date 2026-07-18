@@ -16,7 +16,7 @@ export const AGENT_TOOLS = [
         type: 'function',
         function: {
             name: 'delegate_tasks',
-            description: '把互相独立的调查、测试分析或代码审查任务并行委派给最多 3 个只读子智能体。子智能体不能修改文件，只把摘要返回主智能体。简单任务不要调用。',
+            description: '把互相独立、范围明确的调查、测试分析或代码审查任务委派给最多 3 个只读子智能体。运行时限制并发并返回包含状态、尝试次数和摘要的结构化结果；子智能体不能修改文件。简单任务不要调用。',
             parameters: {
                 type: 'object',
                 properties: {

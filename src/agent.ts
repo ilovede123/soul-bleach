@@ -20,6 +20,17 @@ import { loadAgentGuidance } from './agent/guidance';
 import { runSubagents } from './agent/subagent';
 import { cloneRunState, createRunState, restoreRunState } from './agent/run-state';
 import { ToolEfficiencyTracker } from './agent/tool-efficiency';
+import { parseToolArguments } from './agent/tool-arguments';
+import {
+    AGENT_ITERATIONS_PER_CHECKPOINT,
+    AUTO_CONTINUE_MARKER,
+    getRunBudgetEvent,
+    MAX_AGENT_ITERATIONS_PER_RUN,
+    MAX_AUTOMATIC_CHECKPOINTS,
+    ProgressWatchdog,
+    RUN_BUDGET_WARNING_AT,
+    RUN_BUDGET_WARNING_MARKER
+} from './agent/run-budget';
 
 export { AgentDocumentInput, AgentImageInput, AgentTaskResources, TodoItem } from './agent/types';
 
@@ -35,13 +46,8 @@ const LOCAL_FILE_RESULT_MARKER = '[Soul Bleach Local File Result]';
 const MAX_REPEATED_TOOL_ERRORS = 3;
 // 修改后自检消息的标记前缀，用于避免同一次任务里重复催促
 const POST_EDIT_CHECK_MARKER = '[Soul Bleach Post Edit Check]';
-// 每次开始或继续任务拥有独立的执行预算，达到预算后暂停，避免模型失控消耗接口。
-const MAX_AGENT_ITERATIONS_PER_RUN = 80;
-// 剩余轮次较少时提醒模型停止扩展范围，优先完成验证和最终答复。
-const RUN_BUDGET_WARNING_AT = 12;
 // 执行计划标记。计划会加入模型上下文，而不再只用于界面展示
 const EXECUTION_PLAN_MARKER = '[Soul Bleach Execution Plan]';
-const RUN_BUDGET_WARNING_MARKER = '[Soul Bleach Run Budget Warning]';
 
 /** 单段执行预算耗尽时进入可恢复的暂停状态，而不是把长任务判定为失败。 */
 class AgentPauseError extends Error {
@@ -439,21 +445,36 @@ async function runAgentLoop(
     }, resumeState?.fileTasks ?? []);
     // 根据当前运行中的真实调用模式提醒模型合并小补丁、避免重复读取。
     const toolEfficiency = new ToolEfficiencyTracker();
+    // 只把新的有效工具操作视为进展，防止模型靠重复读取无限刷新执行预算。
+    const progressWatchdog = new ProgressWatchdog();
     let hasRequestedFileTaskCreation = false;
     const taskForToolRouting = resumeState?.task ?? getLatestUserTask(messages);
 
-    // iteration 是跨恢复累计值；localIteration 是本次开始/继续操作的独立预算。
+    // iteration 跨恢复累计；localIteration 覆盖多个自动检查点，用户无需在每 80 轮手动继续。
     const completedIterations = resumeState?.iteration ?? 0;
     for (let localIteration = 0; localIteration < MAX_AGENT_ITERATIONS_PER_RUN; localIteration++) {
         const totalIteration = completedIterations + localIteration;
         // 每轮开始前检查是否已被用户取消
         throwIfAborted(signal);
+        if (progressWatchdog.isStalled(localIteration)) {
+            throw new AgentPauseError([
+                `任务已暂停：连续 ${progressWatchdog.getIdleIterations(localIteration)} 轮没有发现新的有效进展。`,
+                '运行时检测到模型可能在重复读取、重复说明下一步或循环调用相同工具。',
+                '当前计划和文件状态已经保存。请检查任务范围、模型能力或最近的工具错误后再继续。'
+            ].join('\n'));
+        }
         onRunState?.({ iteration: totalIteration + 1 });
 
-        if (localIteration === MAX_AGENT_ITERATIONS_PER_RUN - RUN_BUDGET_WARNING_AT) {
+        const budgetEvent = getRunBudgetEvent(localIteration);
+        if (budgetEvent === 'checkpoint') {
             messages.push({
                 role: 'user',
-                content: `${RUN_BUDGET_WARNING_MARKER}\n本次执行还剩 ${RUN_BUDGET_WARNING_AT} 轮。请停止扩大调查范围，优先完成剩余修改、验证和最终答复；不要重复读取已经确认的内容。`
+                content: `${AUTO_CONTINUE_MARKER}\n运行时已自动保存状态并进入下一个执行段。任务仍在同一次运行中，请沿用现有计划和证据继续推进，不要重复已经完成的工作。`
+            });
+        } else if (budgetEvent === 'warning') {
+            messages.push({
+                role: 'user',
+                content: `${RUN_BUDGET_WARNING_MARKER}\n本次自动执行还剩 ${RUN_BUDGET_WARNING_AT} 轮。请停止扩大调查范围，优先完成剩余修改、验证和最终答复；不要重复读取已经确认的内容。`
             });
         }
 
@@ -469,6 +490,7 @@ async function runAgentLoop(
             // 用户要求查看文件但模型未调用工具时，自动读取本地文件作为回退
             if (shouldUseLocalFileFallback(messages, message)) {
                 const result = executeLocalFileFallback(messages);
+                progressWatchdog.observe(localIteration + 1, `local-file-fallback:${result.slice(0, 500)}`);
                 messages.push({
                     role: 'user',
                     content: `${LOCAL_FILE_RESULT_MARKER}\n${result}\n\n请基于上面的本地文件结果继续回答用户。`
@@ -521,6 +543,7 @@ async function runAgentLoop(
 
             if (changedFiles.size > 0 && validatedRevision < editRevision) {
                 const validation = runValidationPipeline([...changedFiles]);
+                progressWatchdog.observe(localIteration + 1, `validation:${editRevision}:${validation.passed}`);
                 validatedRevision = editRevision;
                 lastValidationPassed = validation.passed;
                 for (const record of validation.records) {
@@ -543,6 +566,7 @@ async function runAgentLoop(
 
             if (changedFiles.size > 0 && independentlyReviewedRevision < editRevision) {
                 const review = await reviewChanges(originalTask, getCurrentFileChangeSet(), signal);
+                progressWatchdog.observe(localIteration + 1, `independent-review:${editRevision}:${review.approved}`);
                 independentlyReviewedRevision = editRevision;
                 lastReviewApproved = review.approved;
                 if (!review.approved) {
@@ -640,6 +664,7 @@ async function runAgentLoop(
                     result = `${result}\n\n${efficiencyNotice}`;
                 }
                 // 工具执行成功，重置错误计数
+                progressWatchdog.observe(localIteration + 1, createToolProgressKey(name, args));
                 lastToolError = '';
                 repeatedToolErrors = 0;
             } catch (e: any) {
@@ -671,12 +696,17 @@ async function runAgentLoop(
         }
     }
 
-    // 单段预算耗尽时暂停。用户继续后会获得新的局部预算，并沿用累计轮次、计划和文件状态。
+    // 多个内部检查点均已自动跨越；只有达到真正的总安全上限才需要用户决定是否继续。
     throw new AgentPauseError([
-        `任务已暂停：本次使用了 ${MAX_AGENT_ITERATIONS_PER_RUN} 轮执行预算，累计执行 ${completedIterations + MAX_AGENT_ITERATIONS_PER_RUN} 轮。`,
-        '当前计划和文件进度已经保存，可以点击“继续任务”接着执行。',
-        '如果多次暂停仍没有进展，说明模型可能在重复调用工具，建议缩小任务范围。'
+        `任务已暂停：已经自动执行 ${MAX_AUTOMATIC_CHECKPOINTS} 个阶段（每阶段 ${AGENT_ITERATIONS_PER_CHECKPOINT} 轮），本次共 ${MAX_AGENT_ITERATIONS_PER_RUN} 轮，累计 ${completedIterations + MAX_AGENT_ITERATIONS_PER_RUN} 轮。`,
+        '这是总成本安全上限，不是普通的阶段检查点。当前计划和文件进度已经保存，可以点击“继续任务”追加一段自动执行预算。',
+        '如果任务仍频繁达到这个上限，建议检查文件任务是否过大，或模型是否产生了大量低效但参数不同的工具调用。'
     ].join('\n'));
+}
+
+/** 为成功工具调用生成进展键；相同工具和参数重复执行不会被当成新进展。 */
+function createToolProgressKey(name: string | undefined, args: Record<string, any>): string {
+    return `${name ?? 'unknown'}:${JSON.stringify(args)}`;
 }
 
 /** 判断用户需求是否属于必须建立真实文件清单的批量任务。 */
@@ -932,7 +962,8 @@ function isInternalControlMessage(content: string): boolean {
         '[Soul Bleach Resume]',
         '[Soul Bleach Deterministic Validation]',
         '[Soul Bleach Independent Review]',
-        RUN_BUDGET_WARNING_MARKER
+        RUN_BUDGET_WARNING_MARKER,
+        AUTO_CONTINUE_MARKER
     ];
     return internalPrefixes.some(prefix => content.startsWith(prefix))
         || content.includes('请不要只说明将要查看文件')
@@ -1044,91 +1075,4 @@ function throwIfAborted(signal?: AbortSignal) {
     const error = new Error('Request aborted.');
     error.name = 'AbortError';
     throw error;
-}
-
-/**
- * 解析工具调用参数。
- * 正常情况下模型应返回合法 JSON；但部分模型会生成半截 JSON 或漏掉右引号，
- * 因此解析失败后会进入 repairToolArguments 做有限修复。
- * @param name 工具名称
- * @param rawArgs 模型返回的原始参数字符串
- * @returns 修复并解析后的参数对象
- */
-function parseToolArguments(name: string | undefined, rawArgs: string): Record<string, string> {
-    try {
-        return JSON.parse(rawArgs);
-    } catch (e: any) {
-        // 对常见工具参数做保守修复，避免模型只差一个引号时整个任务中断
-        const repairedArgs = repairToolArguments(name, rawArgs);
-        if (repairedArgs) {
-            return repairedArgs;
-        }
-
-        // 修复失败时输出控制台日志，便于调试具体是哪个工具参数异常
-        console.error('Failed to parse tool arguments:', {
-            tool: name,
-            rawArgs,
-            error: e
-        });
-
-        throw new Error([
-            '工具参数不是合法 JSON。',
-            `工具: ${name ?? 'unknown'}`,
-            `参数: ${rawArgs}`,
-            `错误: ${e?.message ?? String(e)}`
-        ].join('\n'));
-    }
-}
-
-/**
- * 尝试修复常见工具参数错误。
- * 这里只处理字符串参数，不做复杂 JSON 推断，避免把错误参数修成另一个错误含义。
- * @param name 工具名称
- * @param rawArgs 模型返回的原始参数字符串
- * @returns 修复后的参数对象；无法修复时返回 undefined
- */
-function repairToolArguments(name: string | undefined, rawArgs: string): Record<string, string> | undefined {
-    if (name === 'list_files') {
-        // list_files 没有 dir 时默认读取工作区根目录
-        return { dir: extractStringArgument(rawArgs, 'dir') || '.' };
-    }
-
-    if (name === 'find_files') {
-        // find_files 只需要 query，提取不到时不强行修复
-        const query = extractStringArgument(rawArgs, 'query');
-        return query ? { query } : undefined;
-    }
-
-    if (name === 'search_text') {
-        // search_text 的 path 是可选项，有 query 就可以执行
-        const query = extractStringArgument(rawArgs, 'query');
-        const path = extractStringArgument(rawArgs, 'path');
-        return query ? { query, ...(path ? { path } : {}) } : undefined;
-    }
-
-    if (name === 'run_command') {
-        // run_command 只修复 command 字符串，不自动补其他字段
-        const command = extractStringArgument(rawArgs, 'command');
-        return command ? { command } : undefined;
-    }
-
-    if (name === 'read_file' || name === 'read_file_with_line_numbers') {
-        // 读取文件类工具必须有 path
-        const path = extractStringArgument(rawArgs, 'path');
-        return path ? { path } : undefined;
-    }
-
-    return undefined;
-}
-
-/**
- * 从不完整 JSON 中提取指定字符串字段。
- * 例如 {"dir":"src} 这类缺少结束引号的内容，也能提取出 src。
- * @param rawArgs 原始参数字符串
- * @param key 字段名
- * @returns 提取到的字符串值；没有匹配时返回 undefined
- */
-function extractStringArgument(rawArgs: string, key: string): string | undefined {
-    const pattern = new RegExp(`"${key}"\\s*:\\s*"([^"}]*)`);
-    return rawArgs.match(pattern)?.[1];
 }

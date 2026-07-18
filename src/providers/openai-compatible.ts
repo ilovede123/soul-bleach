@@ -21,8 +21,9 @@ export class OpenAICompatibleAdapter {
                 if (!RETRYABLE_STATUS.has(response.status) || attempt === MAX_REQUEST_ATTEMPTS) {
                     return response;
                 }
+                const retryAfter = response.headers.get('retry-after');
                 await response.body?.cancel();
-                await waitBeforeRetry(attempt, signal);
+                await waitBeforeRetry(attempt, signal, retryAfter);
             } catch (error: any) {
                 if (signal?.aborted) {
                     throw createAbortError();
@@ -42,13 +43,17 @@ export class OpenAICompatibleAdapter {
     }
 }
 
-async function waitBeforeRetry(attempt: number, signal?: AbortSignal) {
+async function waitBeforeRetry(attempt: number, signal?: AbortSignal, retryAfter?: string | null) {
     await new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(createAbortError());
+            return;
+        }
         const finish = () => {
             signal?.removeEventListener('abort', abortHandler);
             resolve();
         };
-        const timer = setTimeout(finish, 500 * 2 ** (attempt - 1));
+        const timer = setTimeout(finish, calculateRetryDelayMs(attempt, retryAfter));
         const abortHandler = () => {
             clearTimeout(timer);
             signal?.removeEventListener('abort', abortHandler);
@@ -56,6 +61,26 @@ async function waitBeforeRetry(attempt: number, signal?: AbortSignal) {
         };
         signal?.addEventListener('abort', abortHandler, { once: true });
     });
+}
+
+/** 根据指数退避和服务端 Retry-After 计算下一次请求延迟，并加入少量抖动避免并发重试再次撞车。 */
+export function calculateRetryDelayMs(attempt: number, retryAfter?: string | null, randomValue = Math.random()): number {
+    const exponentialDelay = 500 * 2 ** Math.max(0, attempt - 1);
+    const serverDelay = parseRetryAfterMs(retryAfter);
+    const jitter = Math.floor(Math.max(0, Math.min(1, randomValue)) * 250);
+    return Math.min(60_000, Math.max(exponentialDelay, serverDelay) + jitter);
+}
+
+function parseRetryAfterMs(value?: string | null): number {
+    if (!value) {
+        return 0;
+    }
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+        return seconds * 1000;
+    }
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : 0;
 }
 
 function createAbortError(): Error {
