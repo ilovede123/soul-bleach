@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import path from "path";
 import fs from "fs";
 import { AgentImageInput, AgentSession } from './agent';
+import { AgentSessionSnapshot } from './agent/types';
 import { parseUploadedDocuments } from './agent/attachments';
 import { getLastFileChangeSet, suggestFiles, undoLastFileChangeSet } from './tool';
 
@@ -16,12 +17,20 @@ const SESSION_STATE_KEY = 'soul-bleach.sessionMessages';
 export class SoulBleachPanel implements vscode.WebviewViewProvider {
     private currentAbortController: AbortController | undefined;
     private readonly session: AgentSession;
+    private webview: vscode.Webview | undefined;
 
     constructor(private readonly context: vscode.ExtensionContext) {
-        this.session = new AgentSession(context.workspaceState.get<any[]>(SESSION_STATE_KEY));
+        this.session = new AgentSession(
+            context.workspaceState.get<AgentSessionSnapshot | any[]>(SESSION_STATE_KEY),
+            snapshot => {
+                this.webview?.postMessage({ command: 'run-state-update', state: snapshot.runState });
+                return context.workspaceState.update(SESSION_STATE_KEY, snapshot);
+            }
+        );
     }
 
     resolveWebviewView(webviewView: vscode.WebviewView) {
+        this.webview = webviewView.webview;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [
@@ -33,6 +42,24 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
 
 
         webviewView.webview.onDidReceiveMessage(async message => {
+            if (message.command === 'webview-ready') {
+                this.publishRunState(webviewView.webview);
+                return;
+            }
+
+            if (message.command === 'resume-run') {
+                await this.resumeRun(webviewView);
+                return;
+            }
+
+            if (message.command === 'discard-run') {
+                this.session.clear();
+                await this.persistSession();
+                this.publishRunState(webviewView.webview);
+                webviewView.webview.postMessage({ command: 'todo-update', items: [] });
+                webviewView.webview.postMessage({ command: 'file-task-update', items: [] });
+                return;
+            }
             if (message.command === 'undo-last-change') {
                 try {
                     const result = undoLastFileChangeSet();
@@ -124,6 +151,41 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
 
     private async persistSession() {
         await this.context.workspaceState.update(SESSION_STATE_KEY, this.session.exportState());
+    }
+
+    private publishRunState(webview: vscode.Webview) {
+        const runState = this.session.getRunState();
+        webview.postMessage({ command: 'run-state-update', state: runState });
+        if (runState) {
+            webview.postMessage({ command: 'todo-update', items: runState.plan });
+            webview.postMessage({ command: 'file-task-update', items: runState.fileTasks });
+        }
+    }
+
+    private async resumeRun(webviewView: vscode.WebviewView) {
+        if (this.currentAbortController) {
+            return;
+        }
+        this.currentAbortController = new AbortController();
+        webviewView.webview.postMessage({ command: 'stream-start' });
+        try {
+            await this.session.resume((chunk) => {
+                webviewView.webview.postMessage({ command: 'stream-chunk', text: chunk });
+            }, this.currentAbortController.signal, (items) => {
+                webviewView.webview.postMessage({ command: 'todo-update', items });
+            }, (items) => {
+                webviewView.webview.postMessage({ command: 'file-task-update', items });
+            });
+        } catch (error: any) {
+            if (error?.name !== 'AbortError') {
+                webviewView.webview.postMessage({ command: 'stream-chunk', text: `出错了: ${error?.message ?? String(error)}` });
+            }
+        } finally {
+            await this.persistSession();
+            this.currentAbortController = undefined;
+            this.publishRunState(webviewView.webview);
+            webviewView.webview.postMessage({ command: 'stream-end' });
+        }
     }
 }
 

@@ -41,3 +41,45 @@ export type FileTaskItem = {
 };
 
 export type FileProgressHandler = (items: FileTaskItem[]) => void;
+
+export type RunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+export type ValidationRecord = {
+    command: string;
+    passed: boolean;
+    summary: string;
+};
+
+/** 可持久化的任务运行状态，用于扩展重启后恢复长任务。 */
+export type AgentRunState = {
+    runId: string;
+    task: string;
+    status: RunStatus;
+    startedAt: number;
+    updatedAt: number;
+    iteration: number;
+    plan: TodoItem[];
+    fileTasks: FileTaskItem[];
+    changedFiles: string[];
+    validations: ValidationRecord[];
+    subagents: SubagentActivity[];
+    lastError?: string;
+};
+
+export type SubagentRole = 'explorer' | 'tester' | 'reviewer';
+
+export type SubagentActivity = {
+    id: string;
+    role: SubagentRole;
+    task: string;
+    status: 'running' | 'completed' | 'failed';
+    summary?: string;
+};
+
+export type AgentSessionSnapshot = {
+    version: 2;
+    messages: any[];
+    runState?: AgentRunState;
+};
+
+export type SessionStateHandler = (snapshot: AgentSessionSnapshot) => void | PromiseLike<void>;

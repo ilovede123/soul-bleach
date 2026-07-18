@@ -188,6 +188,15 @@
         #file-task-panel.visible {
             display: block;
         }
+        #subagent-panel {
+            display: none;
+            max-height: 150px;
+            overflow-y: auto;
+            padding: 9px 14px;
+            border-top: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+            background-color: var(--vscode-sidebar-background, #252526);
+        }
+        #subagent-panel.visible { display: block; }
         .todo-title {
             display: flex;
             align-items: center;
@@ -561,6 +570,32 @@
             pointer-events: none !important;
         }
 
+        #run-recovery {
+            display: none;
+            margin: 0 10px 8px;
+            padding: 9px 10px;
+            border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.10));
+            border-radius: 6px;
+            background: var(--vscode-editorWidget-background, rgba(255,255,255,0.035));
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
+        }
+
+        #run-recovery.visible { display: block; }
+        .run-recovery-title { color: var(--vscode-foreground); font-weight: 600; margin-bottom: 4px; }
+        .run-recovery-detail { line-height: 1.45; overflow-wrap: anywhere; }
+        .run-recovery-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .run-recovery-actions button {
+            height: 26px;
+            padding: 0 10px;
+            border: 1px solid var(--vscode-button-border, transparent);
+            border-radius: 4px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        #resume-run-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+        #discard-run-btn { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+
         .toolbar-icon {
             width: 13px;
             height: 13px;
@@ -585,6 +620,15 @@
         </div>
     </div>
 
+    <div id="run-recovery">
+        <div class="run-recovery-title">发现未完成任务</div>
+        <div id="run-recovery-detail" class="run-recovery-detail"></div>
+        <div class="run-recovery-actions">
+            <button id="resume-run-btn">继续任务</button>
+            <button id="discard-run-btn">放弃任务</button>
+        </div>
+    </div>
+
     <div id="todo-panel">
         <div class="todo-title">
             <span>任务拆解</span>
@@ -599,6 +643,14 @@
             <span id="file-task-count" class="todo-count"></span>
         </div>
         <div id="file-task-list" class="todo-list"></div>
+    </div>
+
+    <div id="subagent-panel">
+        <div class="todo-title">
+            <span>协作智能体</span>
+            <span id="subagent-count" class="todo-count"></span>
+        </div>
+        <div id="subagent-list" class="todo-list"></div>
     </div>
 
     <div id="input-container">
@@ -654,6 +706,13 @@
         const fileTaskPanel = document.getElementById('file-task-panel');
         const fileTaskList = document.getElementById('file-task-list');
         const fileTaskCount = document.getElementById('file-task-count');
+        const subagentPanel = document.getElementById('subagent-panel');
+        const subagentList = document.getElementById('subagent-list');
+        const subagentCount = document.getElementById('subagent-count');
+        const runRecovery = document.getElementById('run-recovery');
+        const runRecoveryDetail = document.getElementById('run-recovery-detail');
+        const resumeRunBtn = document.getElementById('resume-run-btn');
+        const discardRunBtn = document.getElementById('discard-run-btn');
         const MAX_HISTORY_ITEMS = 100;
         const MAX_IMAGE_COUNT = 4;
         const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -762,6 +821,7 @@
             setGenerating(true);
             renderTodos([]);
             renderFileTasks([]);
+            renderSubagents([]);
             showWaitingBubble();
 
             vscode.postMessage({ command: 'user-input', text, images, documents, referencedFiles });
@@ -771,6 +831,11 @@
         clearBtn.addEventListener('click', clearChat);
         diffBtn.addEventListener('click', () => vscode.postMessage({ command: 'show-last-diff' }));
         undoBtn.addEventListener('click', () => vscode.postMessage({ command: 'undo-last-change' }));
+        resumeRunBtn.addEventListener('click', () => {
+            runRecovery.classList.remove('visible');
+            vscode.postMessage({ command: 'resume-run' });
+        });
+        discardRunBtn.addEventListener('click', () => vscode.postMessage({ command: 'discard-run' }));
         attachBtn.addEventListener('click', () => imageInput.click());
         imageInput.addEventListener('change', handleAttachmentSelection);
         textarea.addEventListener('keydown', (e) => {
@@ -1267,6 +1332,7 @@
         }
 
         restoreHistory();
+        vscode.postMessage({ command: 'webview-ready' });
 
         window.addEventListener('message', event => {
             const msg = event.data;
@@ -1288,6 +1354,10 @@
             }
             else if (msg.command === 'file-task-update') {
                 renderFileTasks(msg.items ?? []);
+            }
+            else if (msg.command === 'run-state-update') {
+                renderRunState(msg.state);
+                renderSubagents(msg.state?.subagents ?? []);
             }
             else if (msg.command === 'stream-chunk') {
                 consumeStreamChunk(String(msg.text ?? ''));
@@ -1311,6 +1381,45 @@
                 shouldAutoScroll = true;
             }
         });
+
+        function renderRunState(state) {
+            const resumable = state && ['paused', 'failed', 'cancelled'].includes(state.status);
+            runRecovery.classList.toggle('visible', Boolean(resumable));
+            if (!resumable) {
+                runRecoveryDetail.textContent = '';
+                return;
+            }
+            const statusText = state.status === 'paused' ? '已暂停' : state.status === 'cancelled' ? '已取消' : '执行失败';
+            const completed = (state.plan ?? []).filter(item => item.status === 'completed').length;
+            const total = (state.plan ?? []).length;
+            runRecoveryDetail.textContent = `${statusText} · 第 ${state.iteration ?? 0} 轮 · 计划 ${completed}/${total}：${state.task ?? ''}`;
+        }
+
+        function renderSubagents(items) {
+            const safeItems = Array.isArray(items) ? items : [];
+            subagentList.innerHTML = '';
+            subagentPanel.classList.toggle('visible', safeItems.length > 0);
+            subagentCount.textContent = safeItems.length > 0
+                ? `${safeItems.filter(item => item.status === 'completed').length}/${safeItems.length}`
+                : '';
+
+            for (const item of safeItems) {
+                const row = document.createElement('div');
+                const visualStatus = item.status === 'running' ? 'in_progress' : item.status === 'failed' ? 'completed' : 'completed';
+                row.className = `todo-item ${visualStatus}`;
+                const marker = document.createElement('span');
+                marker.className = 'todo-dot';
+                const label = document.createElement('span');
+                label.className = 'todo-text';
+                label.textContent = `${item.role}: ${item.task}`;
+                row.title = item.summary ?? '';
+                const state = document.createElement('span');
+                state.className = 'todo-state';
+                state.textContent = item.status === 'running' ? '协作中' : item.status === 'failed' ? '失败' : '完成';
+                row.append(marker, label, state);
+                subagentList.appendChild(row);
+            }
+        }
 
         function consumeStreamChunk(chunk) {
             const reasoningMarker = '__SOUL_BLEACH_REASONING__';

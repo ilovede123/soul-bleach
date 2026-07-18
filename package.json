@@ -3,7 +3,7 @@
   "displayName": "灵境·",
   "publisher": "dengwei",
   "description": "支持 Qwen、GLM 和自定义模型的 VS Code 智能编码助手。",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
@@ -70,6 +70,10 @@
       {
         "command": "soul-bleach.showDiagnostics",
         "title": "灵境: 查看诊断日志"
+      },
+      {
+        "command": "soul-bleach.reloadMcp",
+        "title": "灵境: 重新加载 MCP 服务器"
       }
     ],
     "configuration": {
@@ -134,6 +138,37 @@
           "type": "string",
           "default": "",
           "description": "自定义模型名称。留空时使用 modelPreset 或 provider 的默认模型；填写后会覆盖下拉框选择"
+        },
+        "soul-bleach.permissionMode": {
+          "type": "string",
+          "default": "workspace-write",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "ask"
+          ],
+          "enumDescriptions": [
+            "只允许读取和验证，不允许模型写文件或管理后台进程",
+            "允许写入当前工作区；后台进程仍需要用户确认",
+            "每次写文件和管理后台进程前都询问用户"
+          ],
+          "description": "灵境工具权限模式。该设置提供应用层审批，不等同于操作系统沙箱"
+        },
+        "soul-bleach.mcpServers": {
+          "type": "array",
+          "default": [],
+          "description": "MCP stdio 服务器列表。环境变量可写成 ${env:NAME}，外部 MCP 工具每次调用前都会请求确认",
+          "items": {
+            "type": "object",
+            "required": ["name", "command"],
+            "properties": {
+              "name": { "type": "string", "description": "服务器唯一名称" },
+              "command": { "type": "string", "description": "启动命令，例如 npx" },
+              "args": { "type": "array", "items": { "type": "string" }, "description": "命令参数" },
+              "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "传给服务器的环境变量" },
+              "enabled": { "type": "boolean", "default": true }
+            }
+          }
         }
       }
     }
@@ -146,7 +181,7 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js"
+    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js out/test/text-patch.test.js out/test/subagent.test.js out/test/run-state.test.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -161,6 +196,7 @@
     "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "officeparser": "^7.3.0"
   }
 }

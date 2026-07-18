@@ -6,9 +6,18 @@ import { collectTaskFiles } from '../tool';
 import { FileProgressHandler, FileTaskItem, FileTaskStatus } from './types';
 
 export class FileTaskTracker {
-    private items: FileTaskItem[] = [];
+    private items: FileTaskItem[];
 
-    constructor(private readonly onProgress?: FileProgressHandler) { }
+    constructor(private readonly onProgress?: FileProgressHandler, initialItems: FileTaskItem[] = []) {
+        this.items = initialItems.map(item => ({ ...item }));
+        if (this.items.length > 0) {
+            this.publish();
+        }
+    }
+
+    get snapshot(): FileTaskItem[] {
+        return this.items.map(item => ({ ...item }));
+    }
 
     get hasTasks(): boolean {
         return this.items.length > 0;
@@ -49,7 +58,7 @@ export class FileTaskTracker {
         return `文件任务已更新: ${item.path} -> ${status}`;
     }
 
-    observeTool(name: string | undefined, args: Record<string, string>) {
+    observeTool(name: string | undefined, args: Record<string, any>) {
         const path = String(args.path ?? '');
         if (!path || !this.hasTasks) {
             return;
@@ -63,7 +72,7 @@ export class FileTaskTracker {
             item.status = 'in_progress';
             this.publish();
         }
-        if (name === 'replace_range' || name === 'write_file') {
+        if (name === 'apply_patch' || name === 'replace_range' || name === 'write_file') {
             item.status = 'completed';
             this.publish();
         }

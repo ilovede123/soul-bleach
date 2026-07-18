@@ -1,7 +1,7 @@
 // 模型补全接口，负责发送请求并接收流式消息
 import { completion } from './request';
 // 文件操作工具集合：搜索文件、列出目录、按行号读取文件
-import { beginFileChangeSet, findFiles, finishFileChangeSet, listFiles, readFileWithLineNumbers } from './tool';
+import { beginFileChangeSet, findFiles, finishFileChangeSet, getCurrentFileChangeSet, listFiles, readFileWithLineNumbers } from './tool';
 // 上下文压缩：在会话消息过长时进行裁剪，避免超出模型上下文窗口
 import { compactMessages } from './agent/context';
 // 任务规划相关：创建计划、设置当前/最终待办、判断是否需要规划
@@ -9,10 +9,16 @@ import { createPlan, completeAllTodos, setActiveTodo, setActiveTodoByTool, setFi
 // 初始消息，定义会话启动时的基础行为
 import { createInitialMessages } from './agent/prompts';
 // Agent 可用的工具声明列表及工具执行入口
-import { AGENT_TOOLS, executeAgentTool } from './agent/tools';
+import { executeAgentTool, getAgentTools } from './agent/tools';
 // 类型定义：进度回调与待办项
 import { AgentTaskResources, FileProgressHandler, FileTaskStatus, ProgressHandler, TodoItem } from './agent/types';
 import { FileTaskTracker } from './agent/work-items';
+import { AgentRunState, AgentSessionSnapshot, SessionStateHandler, ValidationRecord } from './agent/types';
+import { runValidationPipeline } from './agent/validation';
+import { reviewChanges } from './agent/reviewer';
+import { loadAgentGuidance } from './agent/guidance';
+import { runSubagents } from './agent/subagent';
+import { cloneRunState, createRunState, restoreRunState } from './agent/run-state';
 
 export { AgentDocumentInput, AgentImageInput, AgentTaskResources, TodoItem } from './agent/types';
 
@@ -41,27 +47,42 @@ const EXECUTION_PLAN_MARKER = '[Soul Bleach Execution Plan]';
 export class AgentSession {
     // 会话消息列表，初始包含基础消息，随任务执行不断追加 user/assistant/tool 消息
     private messages: any[];
+    private runState: AgentRunState | undefined;
 
-    constructor(savedMessages?: any[]) {
+    constructor(savedState?: AgentSessionSnapshot | any[], private readonly onStateChange?: SessionStateHandler) {
         const initialMessages = createInitialMessages();
+        const savedMessages = Array.isArray(savedState) ? savedState : savedState?.messages;
         const history = Array.isArray(savedMessages)
             ? savedMessages.filter(message => message && message.role !== 'system')
             : [];
         this.messages = [...initialMessages, ...history];
+        if (!Array.isArray(savedState) && savedState?.runState) {
+            this.runState = restoreRunState(savedState.runState);
+        }
         this.trimMessages();
     }
 
     /** 清空会话历史，重置为初始基础消息 */
     clear() {
         this.messages = createInitialMessages();
+        this.runState = undefined;
+        this.publishState();
     }
 
     /** 导出适合写入 workspaceState 的会话内容，不保存图片 Base64。 */
-    exportState(): any[] {
-        return compactMessages(this.messages).map(message => ({
-            ...message,
-            content: sanitizePersistedContent(message.content)
-        }));
+    exportState(): AgentSessionSnapshot {
+        return {
+            version: 2,
+            messages: compactMessages(this.messages).map(message => ({
+                ...message,
+                content: sanitizePersistedContent(message.content)
+            })),
+            runState: this.runState ? cloneRunState(this.runState) : undefined
+        };
+    }
+
+    getRunState(): AgentRunState | undefined {
+        return this.runState ? cloneRunState(this.runState) : undefined;
     }
 
     /**
@@ -82,27 +103,128 @@ export class AgentSession {
     ): Promise<string> {
         // 根据任务复杂度判断是否需要创建待办计划
         const todos = await createTodosIfNeeded(task, signal, onProgress);
+        this.runState = createRunState(task, todos ?? []);
+        const trackedProgress = this.createProgressHandler(onProgress);
         // 把用户需求和执行计划合并成同一条 user 消息，避免在对话中间插入 system 角色
         this.messages.push({ role: 'user', content: createTaskMessage(task, todos, resources) });
+        this.publishState();
         // 每次任务独立记录修改快照，无论成功、失败或取消都保留可撤销信息
         beginFileChangeSet();
-        let result: string;
         try {
             // 进入 Agent 主循环，反复调用模型和工具直到任务完成
-            result = await runAgentLoop(this.messages, onChunk, signal, todos, onProgress, onFileProgress);
+            const result = await runAgentLoop(
+                this.messages,
+                onChunk,
+                signal,
+                todos,
+                trackedProgress,
+                onFileProgress,
+                undefined,
+                event => this.updateRunState(event)
+            );
+            completeAllTodos(todos, trackedProgress);
+            this.updateRunState({ status: 'completed', lastError: undefined });
+            return result;
+        } catch (error: any) {
+            this.updateRunState({
+                status: error?.name === 'AbortError' ? 'cancelled' : 'failed',
+                lastError: error?.message ?? String(error)
+            });
+            throw error;
         } finally {
             finishFileChangeSet();
+            this.trimMessages();
+            this.publishState();
         }
-        // 标记所有待办为已完成
-        completeAllTodos(todos, onProgress);
-        // 压缩历史消息，保留关键上下文，裁剪冗余内容
-        this.trimMessages();
-        return result;
+    }
+
+    /** 从持久化的运行状态继续执行，不重复创建用户任务和计划。 */
+    async resume(
+        onChunk?: (text: string) => void,
+        signal?: AbortSignal,
+        onProgress?: ProgressHandler,
+        onFileProgress?: FileProgressHandler
+    ): Promise<string> {
+        if (!this.runState || !['paused', 'failed', 'cancelled'].includes(this.runState.status)) {
+            throw new Error('当前没有可以继续的任务。');
+        }
+
+        this.runState.status = 'running';
+        this.runState.lastError = undefined;
+        this.runState.updatedAt = Date.now();
+        const todos = this.runState.plan.map(item => ({ ...item }));
+        const trackedProgress = this.createProgressHandler(onProgress);
+        onProgress?.(todos.map(item => ({ ...item })));
+        onFileProgress?.(this.runState.fileTasks.map(item => ({ ...item })));
+        this.messages.push({
+            role: 'user',
+            content: '[Soul Bleach Resume]\n请根据已保存的计划、工具结果和文件任务状态，从中断位置继续执行，不要重复已经完成的工作。'
+        });
+        this.publishState();
+
+        beginFileChangeSet();
+        try {
+            const result = await runAgentLoop(
+                this.messages,
+                onChunk,
+                signal,
+                todos,
+                trackedProgress,
+                onFileProgress,
+                {
+                    iteration: this.runState.iteration,
+                    fileTasks: this.runState.fileTasks,
+                    changedFiles: this.runState.changedFiles,
+                    task: this.runState.task
+                },
+                event => this.updateRunState(event)
+            );
+            completeAllTodos(todos, trackedProgress);
+            this.updateRunState({ status: 'completed', lastError: undefined });
+            return result;
+        } catch (error: any) {
+            this.updateRunState({
+                status: error?.name === 'AbortError' ? 'cancelled' : 'failed',
+                lastError: error?.message ?? String(error)
+            });
+            throw error;
+        } finally {
+            finishFileChangeSet();
+            this.trimMessages();
+            this.publishState();
+        }
     }
 
     /** 压缩会话消息列表，避免上下文超出模型窗口 */
     private trimMessages() {
         this.messages = compactMessages(this.messages);
+    }
+
+    private createProgressHandler(onProgress?: ProgressHandler): ProgressHandler {
+        return items => {
+            if (this.runState) {
+                this.runState.plan = items.map(item => ({ ...item }));
+                this.runState.updatedAt = Date.now();
+            }
+            onProgress?.(items);
+            this.publishState();
+        };
+    }
+
+    private updateRunState(event: Partial<AgentRunState> & { validation?: ValidationRecord }) {
+        if (!this.runState) {
+            return;
+        }
+        if (event.validation) {
+            this.runState.validations.push({ ...event.validation });
+        }
+        const { validation: _validation, ...statePatch } = event;
+        Object.assign(this.runState, statePatch, { updatedAt: Date.now() });
+        this.publishState();
+    }
+
+    private publishState() {
+        void this.onStateChange?.(this.exportState());
     }
 }
 
@@ -182,6 +304,11 @@ function createTaskMessage(task: string, todos?: TodoItem[], resources?: AgentTa
     const documents = resources?.documents?.filter(document => document.text) ?? [];
     const planLines = todos?.map((todo, index) => `${index + 1}. ${todo.title}`) ?? [];
     const textParts = [task];
+    const guidance = loadAgentGuidance(referencedFiles);
+
+    if (guidance) {
+        textParts.push('', '[Soul Bleach Repository Guidance]', guidance);
+    }
 
     if (referencedFiles.length > 0) {
         textParts.push(
@@ -268,14 +395,16 @@ async function runAgentLoop(
     signal?: AbortSignal,
     todos?: TodoItem[],
     onProgress?: ProgressHandler,
-    onFileProgress?: FileProgressHandler
+    onFileProgress?: FileProgressHandler,
+    resumeState?: { iteration: number; fileTasks: any[]; changedFiles: string[]; task?: string },
+    onRunState?: (event: Partial<AgentRunState> & { validation?: ValidationRecord }) => void
 ): Promise<string> {
     // 上一次工具错误的标识，用于检测是否为重复错误
     let lastToolError = '';
     // 同一工具错误连续出现的次数
     let repeatedToolErrors = 0;
     // 本轮任务中被修改过的文件路径
-    const changedFiles = new Set<string>();
+    const changedFiles = new Set<string>(resumeState?.changedFiles ?? []);
     // 修改后已经重新读取确认过的文件路径
     const confirmedFiles = new Set<string>();
     // 修改后是否已经运行过验证命令
@@ -284,21 +413,31 @@ async function runAgentLoop(
     let editRevision = 0;
     // 最近一次完成检查所覆盖的修改版本；只有新修改出现时才会再次要求检查
     let reviewedEditRevision = 0;
+    // 程序控制的验证和独立审查分别记录覆盖到哪个修改版本。
+    let validatedRevision = 0;
+    let lastValidationPassed = true;
+    let independentlyReviewedRevision = 0;
+    let lastReviewApproved = true;
     // 模型是否已经主动调用 update_plan；主动上报后不再使用工具名猜测进度
     let hasExplicitPlanProgress = false;
     // 批量目录任务由程序持有文件清单，完成判定不再依赖模型记忆
-    const fileTaskTracker = new FileTaskTracker(onFileProgress);
+    const fileTaskTracker = new FileTaskTracker(items => {
+        onFileProgress?.(items);
+        onRunState?.({ fileTasks: items });
+    }, resumeState?.fileTasks ?? []);
     let hasRequestedFileTaskCreation = false;
+    const taskForToolRouting = resumeState?.task ?? getLatestUserTask(messages);
 
-    for (let i = 0; i < MAX_AGENT_ITERATIONS; i++) {
+    for (let i = resumeState?.iteration ?? 0; i < MAX_AGENT_ITERATIONS; i++) {
         // 每轮开始前检查是否已被用户取消
         throwIfAborted(signal);
+        onRunState?.({ iteration: i + 1 });
 
         // 长任务会产生大量工具消息，在循环中及时压缩旧上下文，避免请求越来越大
         compactMessagesInPlace(messages);
 
         // 调用模型获取本轮回复（可能包含文本内容 + 工具调用）
-        const message = await completion(messages, AGENT_TOOLS, onChunk, signal);
+        const message = await completion(messages, getAgentTools(taskForToolRouting), onChunk, signal);
         messages.push(message);
 
         // —— 分支一：模型没有发起工具调用 ——
@@ -327,7 +466,8 @@ async function runAgentLoop(
                 continue;
             }
 
-            const originalTask = getLatestUserTask(messages);
+            // 主循环始终绑定启动本次运行的原始需求，不能把验证结果、审查意见等内部消息误当成新任务。
+            const originalTask = taskForToolRouting;
             if (requiresFileTaskList(originalTask) && !fileTaskTracker.hasTasks) {
                 if (hasRequestedFileTaskCreation) {
                     throw new Error('批量任务没有创建文件清单。请明确提供目标目录，或缩小任务范围后重试。');
@@ -353,6 +493,51 @@ async function runAgentLoop(
                     content: createPostEditCheckMessage(changedFiles, confirmedFiles, hasPostEditValidation, todos)
                 });
                 continue;
+            }
+
+            if (changedFiles.size > 0 && validatedRevision < editRevision) {
+                const validation = runValidationPipeline([...changedFiles]);
+                validatedRevision = editRevision;
+                lastValidationPassed = validation.passed;
+                for (const record of validation.records) {
+                    onRunState?.({ validation: record });
+                }
+                messages.push({
+                    role: 'user',
+                    content: [
+                        '[Soul Bleach Deterministic Validation]',
+                        validation.passed ? '程序验证已通过。' : '程序验证失败，必须根据下面的错误继续修复，不能直接结束。',
+                        validation.summary
+                    ].join('\n')
+                });
+                continue;
+            }
+
+            if (!lastValidationPassed) {
+                throw new Error('任务修改没有变化，但确定性验证仍然失败。请查看验证输出后缩小任务范围重试。');
+            }
+
+            if (changedFiles.size > 0 && independentlyReviewedRevision < editRevision) {
+                const review = await reviewChanges(originalTask, getCurrentFileChangeSet(), signal);
+                independentlyReviewedRevision = editRevision;
+                lastReviewApproved = review.approved;
+                if (!review.approved) {
+                    messages.push({
+                        role: 'user',
+                        content: [
+                            '[Soul Bleach Independent Review]',
+                            '独立审查发现必须修复的问题：',
+                            ...review.issues.map(issue => `- ${issue}`),
+                            review.summary,
+                            '请根据证据修改代码并重新验证。'
+                        ].join('\n')
+                    });
+                    continue;
+                }
+            }
+
+            if (!lastReviewApproved) {
+                throw new Error('独立审查的问题尚未通过代码修改解决，任务已停止。');
             }
 
             // 模型给出了最终文本回复，标记最后一个待办并返回
@@ -382,6 +567,13 @@ async function runAgentLoop(
                         Array.isArray(args.extensions) ? args.extensions.map(String) : [],
                         Number(args.maxFiles) || 200
                     );
+                } else if (name === 'delegate_tasks') {
+                    const delegatedTasks = Array.isArray(args.tasks)
+                        ? args.tasks.map((item: any) => ({ role: String(item.role), task: String(item.task) }))
+                        : [];
+                    result = await runSubagents(taskForToolRouting, delegatedTasks as any, signal, items => {
+                        onRunState?.({ subagents: items });
+                    });
                 } else if (name === 'update_file_task') {
                     result = fileTaskTracker.update(
                         String(args.path ?? ''),
@@ -399,15 +591,25 @@ async function runAgentLoop(
                     }
 
                     // 执行文件或命令工具并获取结果
-                    result = executeAgentTool(name, args);
+                    result = await executeAgentTool(name, args);
                     updatePostEditState(name, args, changedFiles, confirmedFiles, () => {
                         hasPostEditValidation = true;
                     });
                     fileTaskTracker.observeTool(name, args);
+                    if (name === 'run_command') {
+                        onRunState?.({
+                            validation: {
+                                command: String(args.command ?? ''),
+                                passed: /退出码:\s*0/.test(result),
+                                summary: result.slice(0, 1200)
+                            }
+                        });
+                    }
                 }
                 // 修改版本只在工具成功执行后递增，失败的替换不会触发虚假的完成检查
-                if (name === 'replace_range' || name === 'write_file') {
+                if (name === 'apply_patch' || name === 'replace_range' || name === 'write_file') {
                     editRevision++;
+                    onRunState?.({ changedFiles: [...changedFiles] });
                 }
                 // 工具执行成功，重置错误计数
                 lastToolError = '';
@@ -491,14 +693,14 @@ function getToolErrorKey(name: string | undefined, error: any): string {
  */
 function updatePostEditState(
     name: string | undefined,
-    args: Record<string, string>,
+    args: Record<string, any>,
     changedFiles: Set<string>,
     confirmedFiles: Set<string>,
     markValidated: () => void
 ) {
     const path = normalizeToolPath(args.path);
 
-    if (name === 'replace_range' || name === 'write_file') {
+    if (name === 'apply_patch' || name === 'replace_range' || name === 'write_file') {
         changedFiles.add(path);
         confirmedFiles.delete(path);
         return;
@@ -687,13 +889,26 @@ function getLatestUserTask(messages: any[]): string {
     const message = [...messages].reverse().find(item => {
         const content = String(item.content ?? '');
         return item.role === 'user'
-            && !content.includes('请不要只说明将要查看文件')
-            && !content.startsWith(LOCAL_FILE_RESULT_MARKER)
-            && !content.startsWith(POST_EDIT_CHECK_MARKER);
+            && !isInternalControlMessage(content);
     });
 
     // 多模态消息先提取 text 内容，再去掉内部执行计划，只保留用户原始需求和文件引用
     return getTextMessageContent(message?.content).split(EXECUTION_PLAN_MARKER)[0].trim();
+}
+
+/** 判断消息是否由运行时注入，仅用于控制循环而不是表达新的用户需求。 */
+function isInternalControlMessage(content: string): boolean {
+    const internalPrefixes = [
+        LOCAL_FILE_RESULT_MARKER,
+        POST_EDIT_CHECK_MARKER,
+        '[Soul Bleach Resume]',
+        '[Soul Bleach Deterministic Validation]',
+        '[Soul Bleach Independent Review]'
+    ];
+    return internalPrefixes.some(prefix => content.startsWith(prefix))
+        || content.includes('请不要只说明将要查看文件')
+        || content.startsWith('这是批量文件任务。')
+        || content.startsWith('仍有文件任务未完成');
 }
 
 /** 从字符串或多模态 content 数组中提取文本部分。 */

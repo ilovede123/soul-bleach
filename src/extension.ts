@@ -8,11 +8,13 @@ import { SoulBleachPanel } from './pannel';
 import { clearApiKey, initializeModelConfig, setApiKey } from './providers/config';
 import { initializeDiagnostics, showDiagnostics } from './diagnostics';
 import { completion } from './request';
+import { disposeMcp, initializeMcp, reloadMcpServers } from './agent/mcp';
 
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Soul Bleach is active.');
 	initializeDiagnostics(context);
 	await initializeModelConfig(context.secrets);
+	await initializeMcp(context);
 
 	const outputChannel = vscode.window.createOutputChannel('Soul Bleach');
 	const agentCommand = vscode.commands.registerCommand('soul-bleach.run', async () => {
@@ -76,6 +78,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	const showDiagnosticsCommand = vscode.commands.registerCommand('soul-bleach.showDiagnostics', showDiagnostics);
+	const reloadMcpCommand = vscode.commands.registerCommand('soul-bleach.reloadMcp', async () => {
+		await reloadMcpServers();
+		vscode.window.showInformationMessage('灵境 MCP 服务器已重新加载。');
+	});
 
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
@@ -88,6 +94,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(clearApiKeyCommand);
 	context.subscriptions.push(testConnectionCommand);
 	context.subscriptions.push(showDiagnosticsCommand);
+	context.subscriptions.push(reloadMcpCommand);
 }
 
-export function deactivate() { }
+export async function deactivate() {
+	await disposeMcp();
+}

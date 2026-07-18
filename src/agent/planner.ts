@@ -135,7 +135,7 @@ function getTodoIndexForTool(todos: TodoItem[], toolName: string | undefined): n
         return findFirstTodoIndex(titles, /定位|查找|搜索|读取|查看|上下文|分析|理解/) ?? 0;
     }
 
-    if (/replace_range|write_file/.test(normalizedToolName)) {
+    if (/apply_patch|replace_range|write_file/.test(normalizedToolName)) {
         return findFirstTodoIndex(titles, /修改|写入|替换|实现|更新|执行|代码/) ?? Math.min(1, todos.length - 1);
     }
 
