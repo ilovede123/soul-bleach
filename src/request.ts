@@ -43,7 +43,7 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
 
     const startedAt = Date.now();
     const endpoint = getEndpointLabel(baseUrl);
-    logDiagnostic(`请求开始 provider=${provider} model=${model} endpoint=${endpoint} messages=${messages.length} tools=${tools.length}`);
+    logDiagnostic(`请求开始 provider=${provider} model=${model} endpoint=${endpoint} auth=${apiKey ? 'configured' : 'none'} messages=${messages.length} tools=${tools.length}`);
     let response: Response;
     try {
         response = await transport.request(baseUrl, {
@@ -59,6 +59,16 @@ export async function completion(messages: any[], tools: any[], onChunk?: (text:
 
     if (!response.ok) {
         const errorText = await response.text();
+        if (response.status === 401 || response.status === 403) {
+            throw new Error([
+                `模型认证失败: HTTP ${response.status}`,
+                `服务商: ${provider}`,
+                `接口: ${endpoint}`,
+                `API Key 状态: ${apiKey ? '已读取到密钥' : '未设置密钥'}`,
+                '请确认 provider、modelPreset 和 baseUrl 指向同一个服务商，再运行“灵境: 设置 API Key”粘贴该接口对应的密钥；新密钥会立即覆盖旧值。',
+                `服务端信息: ${errorText}`
+            ].join('\n'));
+        }
         throw new Error(`API request failed: ${response.status} ${errorText}`);
     }
 

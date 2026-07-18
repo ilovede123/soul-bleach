@@ -9,6 +9,7 @@ import { clearApiKey, initializeModelConfig, setApiKey } from './providers/confi
 import { initializeDiagnostics, showDiagnostics } from './diagnostics';
 import { completion } from './request';
 import { disposeMcp, initializeMcp, reloadMcpServers } from './agent/mcp';
+import { SoulBleachSettingsPanel } from './settings-panel';
 
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Soul Bleach is active.');
@@ -53,7 +54,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 		await setApiKey(value);
-		vscode.window.showInformationMessage('灵境 API Key 已安全保存。');
+		vscode.window.showInformationMessage('API Key 已安全保存，下一次请求立即生效。');
 	});
 
 	const clearApiKeyCommand = vscode.commands.registerCommand('soul-bleach.clearApiKey', async () => {
@@ -78,6 +79,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	const showDiagnosticsCommand = vscode.commands.registerCommand('soul-bleach.showDiagnostics', showDiagnostics);
+	const openSettingsCommand = vscode.commands.registerCommand('soul-bleach.openSettings', () => {
+		SoulBleachSettingsPanel.createOrShow(context);
+	});
 	const reloadMcpCommand = vscode.commands.registerCommand('soul-bleach.reloadMcp', async () => {
 		await reloadMcpServers();
 		vscode.window.showInformationMessage('灵境 MCP 服务器已重新加载。');
@@ -94,6 +98,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(clearApiKeyCommand);
 	context.subscriptions.push(testConnectionCommand);
 	context.subscriptions.push(showDiagnosticsCommand);
+	context.subscriptions.push(openSettingsCommand);
 	context.subscriptions.push(reloadMcpCommand);
 }
 

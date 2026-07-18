@@ -75,23 +75,33 @@ export async function getModelConfig(): Promise<ModelConfig> {
     const modelPreset = config.get<ModelPreset>('modelPreset', 'provider-default');
     const providerPreset = PROVIDER_PRESETS[provider] ?? PROVIDER_PRESETS.qwen;
     const selectedPreset = modelPreset === 'provider-default' ? providerPreset : MODEL_PRESETS[modelPreset] ?? providerPreset;
+    const customBaseUrl = config.get<string>('baseUrl', '').trim();
+    if (customBaseUrl && !/^https?:\/\//i.test(customBaseUrl)) {
+        throw new Error('模型接口地址格式错误：baseUrl 必须以 http:// 或 https:// 开头。请清空误填内容，或填写完整接口地址；API Key 请通过侧边栏“密钥”按钮设置。');
+    }
     return {
         provider,
         modelPreset,
-        baseUrl: config.get<string>('baseUrl', '') || selectedPreset.baseUrl,
+        // 服务商负责确定接口，模型预设只选择模型；只有用户显式填写 baseUrl 时才覆盖服务商地址。
+        baseUrl: customBaseUrl || providerPreset.baseUrl,
         apiKey: await secretStorage?.get(API_KEY_SECRET) ?? '',
         model: config.get<string>('model', '') || selectedPreset.model,
-        extraBody: selectedPreset.extraBody ?? {}
+        extraBody: provider === 'qwen' ? QWEN_EXTRA_BODY : {}
     };
 }
 
-export async function setApiKey(value: string) {
+export async function setApiKey(value: string): Promise<void> {
     if (!secretStorage) {
         throw new Error('SecretStorage 尚未初始化。');
     }
     await secretStorage.store(API_KEY_SECRET, value.trim());
 }
 
-export async function clearApiKey() {
+export async function clearApiKey(): Promise<void> {
     await secretStorage?.delete(API_KEY_SECRET);
+}
+
+/** 仅返回密钥是否存在，设置页面永远不会读取或展示密钥原文。 */
+export async function hasApiKey(): Promise<boolean> {
+    return Boolean(await secretStorage?.get(API_KEY_SECRET));
 }
