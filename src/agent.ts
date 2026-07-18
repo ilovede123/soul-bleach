@@ -34,10 +34,21 @@ const LOCAL_FILE_RESULT_MARKER = '[Soul Bleach Local File Result]';
 const MAX_REPEATED_TOOL_ERRORS = 3;
 // 修改后自检消息的标记前缀，用于避免同一次任务里重复催促
 const POST_EDIT_CHECK_MARKER = '[Soul Bleach Post Edit Check]';
-// 长任务允许的最大模型循环轮次。读取、替换和复查通常各占一轮，20 轮不足以处理较长文件
-const MAX_AGENT_ITERATIONS = 60;
+// 每次开始或继续任务拥有独立的执行预算，达到预算后暂停，避免模型失控消耗接口。
+const MAX_AGENT_ITERATIONS_PER_RUN = 80;
+// 剩余轮次较少时提醒模型停止扩展范围，优先完成验证和最终答复。
+const RUN_BUDGET_WARNING_AT = 12;
 // 执行计划标记。计划会加入模型上下文，而不再只用于界面展示
 const EXECUTION_PLAN_MARKER = '[Soul Bleach Execution Plan]';
+const RUN_BUDGET_WARNING_MARKER = '[Soul Bleach Run Budget Warning]';
+
+/** 单段执行预算耗尽时进入可恢复的暂停状态，而不是把长任务判定为失败。 */
+class AgentPauseError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'AgentPauseError';
+    }
+}
 
 /**
  * Agent 会话类。
@@ -127,7 +138,7 @@ export class AgentSession {
             return result;
         } catch (error: any) {
             this.updateRunState({
-                status: error?.name === 'AbortError' ? 'cancelled' : 'failed',
+                status: error?.name === 'AgentPauseError' ? 'paused' : error?.name === 'AbortError' ? 'cancelled' : 'failed',
                 lastError: error?.message ?? String(error)
             });
             throw error;
@@ -184,7 +195,7 @@ export class AgentSession {
             return result;
         } catch (error: any) {
             this.updateRunState({
-                status: error?.name === 'AbortError' ? 'cancelled' : 'failed',
+                status: error?.name === 'AgentPauseError' ? 'paused' : error?.name === 'AbortError' ? 'cancelled' : 'failed',
                 lastError: error?.message ?? String(error)
             });
             throw error;
@@ -428,10 +439,20 @@ async function runAgentLoop(
     let hasRequestedFileTaskCreation = false;
     const taskForToolRouting = resumeState?.task ?? getLatestUserTask(messages);
 
-    for (let i = resumeState?.iteration ?? 0; i < MAX_AGENT_ITERATIONS; i++) {
+    // iteration 是跨恢复累计值；localIteration 是本次开始/继续操作的独立预算。
+    const completedIterations = resumeState?.iteration ?? 0;
+    for (let localIteration = 0; localIteration < MAX_AGENT_ITERATIONS_PER_RUN; localIteration++) {
+        const totalIteration = completedIterations + localIteration;
         // 每轮开始前检查是否已被用户取消
         throwIfAborted(signal);
-        onRunState?.({ iteration: i + 1 });
+        onRunState?.({ iteration: totalIteration + 1 });
+
+        if (localIteration === MAX_AGENT_ITERATIONS_PER_RUN - RUN_BUDGET_WARNING_AT) {
+            messages.push({
+                role: 'user',
+                content: `${RUN_BUDGET_WARNING_MARKER}\n本次执行还剩 ${RUN_BUDGET_WARNING_AT} 轮。请停止扩大调查范围，优先完成剩余修改、验证和最终答复；不要重复读取已经确认的内容。`
+            });
+        }
 
         // 长任务会产生大量工具消息，在循环中及时压缩旧上下文，避免请求越来越大
         compactMessagesInPlace(messages);
@@ -643,11 +664,11 @@ async function runAgentLoop(
         }
     }
 
-    // 迭代次数耗尽属于未完成状态，抛出错误以避免外层把全部待办误标为完成
-    throw new Error([
-        `任务已停止：执行轮次达到上限（${MAX_AGENT_ITERATIONS} 轮），未能稳定完成。`,
-        '通常原因是模型反复调用工具但没有根据工具结果修正参数。',
-        '建议缩小需求范围，或先让智能体重新读取目标文件后再修改。'
+    // 单段预算耗尽时暂停。用户继续后会获得新的局部预算，并沿用累计轮次、计划和文件状态。
+    throw new AgentPauseError([
+        `任务已暂停：本次使用了 ${MAX_AGENT_ITERATIONS_PER_RUN} 轮执行预算，累计执行 ${completedIterations + MAX_AGENT_ITERATIONS_PER_RUN} 轮。`,
+        '当前计划和文件进度已经保存，可以点击“继续任务”接着执行。',
+        '如果多次暂停仍没有进展，说明模型可能在重复调用工具，建议缩小任务范围。'
     ].join('\n'));
 }
 
@@ -903,7 +924,8 @@ function isInternalControlMessage(content: string): boolean {
         POST_EDIT_CHECK_MARKER,
         '[Soul Bleach Resume]',
         '[Soul Bleach Deterministic Validation]',
-        '[Soul Bleach Independent Review]'
+        '[Soul Bleach Independent Review]',
+        RUN_BUDGET_WARNING_MARKER
     ];
     return internalPrefixes.some(prefix => content.startsWith(prefix))
         || content.includes('请不要只说明将要查看文件')

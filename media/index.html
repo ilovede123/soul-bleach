@@ -148,10 +148,24 @@
             color: var(--vscode-descriptionForeground, rgba(204,204,204,0.58));
             border-left: 2px solid var(--vscode-widget-border, rgba(255,255,255,0.14));
             margin-bottom: 10px;
-            padding-left: 10px;
+            padding: 0 8px 0 10px;
             font-size: 12px;
             line-height: 1.55;
             white-space: pre-wrap;
+            max-height: 132px;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+        .reasoning-block::-webkit-scrollbar {
+            width: 5px;
+        }
+        .reasoning-block::-webkit-scrollbar-thumb {
+            background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.35));
+            border-radius: 3px;
+        }
+        .reasoning-block::-webkit-scrollbar-thumb:hover {
+            background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100,100,100,0.55));
         }
         .reasoning-title {
             color: var(--vscode-descriptionForeground, rgba(204,204,204,0.48));
@@ -729,6 +743,7 @@
         let isGenerating = false;
         let isShowingThinking = false;
         let shouldAutoScroll = true;
+        let shouldReasoningAutoScroll = true;
         let isProgrammaticScroll = false;
         let selectedImages = [];
         let selectedDocuments = [];
@@ -835,6 +850,15 @@
             runRecovery.classList.remove('visible');
             vscode.postMessage({ command: 'resume-run' });
         });
+
+        // 思考区域单独管理滚动；用户向上查看时，不再被后续流式内容拉回底部。
+        scroller.addEventListener('scroll', event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement) || !target.classList.contains('reasoning-block')) {
+                return;
+            }
+            shouldReasoningAutoScroll = target.scrollHeight - target.scrollTop - target.clientHeight < 12;
+        }, true);
         discardRunBtn.addEventListener('click', () => vscode.postMessage({ command: 'discard-run' }));
         attachBtn.addEventListener('click', () => imageInput.click());
         imageInput.addEventListener('change', handleAttachmentSelection);
@@ -1311,6 +1335,7 @@
             hasReasoningSignal = false;
             currentActiveBubble = null;
             shouldAutoScroll = true;
+            shouldReasoningAutoScroll = true;
             selectedImages = [];
             selectedDocuments = [];
             selectedFiles = [];
@@ -1344,6 +1369,7 @@
                 hasReasoningSignal = false;
                 isShowingThinking = false;
                 shouldAutoScroll = true;
+                shouldReasoningAutoScroll = true;
                 showWaitingBubble();
             } 
             else if (msg.command === 'todo-update') {
@@ -1485,6 +1511,8 @@
 
         function renderActiveAgentBubble() {
             const parts = [];
+            const previousReasoningBlock = currentActiveBubble.querySelector('.reasoning-block');
+            const previousReasoningScrollTop = previousReasoningBlock?.scrollTop ?? 0;
 
             if (hasReasoningSignal || accumulatedReasoning.trim().length > 0) {
                 const reasoningHtml = accumulatedReasoning.trim().length > 0
@@ -1500,6 +1528,12 @@
 
             parts.push(`<div class="answer-block">${SimpleMarked.parse(accumulatedText)}</div>`);
             currentActiveBubble.innerHTML = parts.join('');
+            const reasoningBlock = currentActiveBubble.querySelector('.reasoning-block');
+            if (reasoningBlock && shouldReasoningAutoScroll) {
+                reasoningBlock.scrollTop = reasoningBlock.scrollHeight;
+            } else if (reasoningBlock) {
+                reasoningBlock.scrollTop = previousReasoningScrollTop;
+            }
         }
     </script>
 </body>

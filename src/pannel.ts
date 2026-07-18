@@ -118,7 +118,9 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ command: 'file-task-update', items });
                     });
                 } catch (e: any) {
-                    if (e?.name !== 'AbortError') {
+                    if (e?.name === 'AgentPauseError') {
+                        webviewView.webview.postMessage({ command: 'stream-chunk', text: e.message });
+                    } else if (e?.name !== 'AbortError') {
                         console.error('Soul Bleach error:', e);
                         webviewView.webview.postMessage({
                             command: 'stream-chunk',
@@ -177,7 +179,9 @@ export class SoulBleachPanel implements vscode.WebviewViewProvider {
                 webviewView.webview.postMessage({ command: 'file-task-update', items });
             });
         } catch (error: any) {
-            if (error?.name !== 'AbortError') {
+            if (error?.name === 'AgentPauseError') {
+                webviewView.webview.postMessage({ command: 'stream-chunk', text: error.message });
+            } else if (error?.name !== 'AbortError') {
                 webviewView.webview.postMessage({ command: 'stream-chunk', text: `出错了: ${error?.message ?? String(error)}` });
             }
         } finally {
