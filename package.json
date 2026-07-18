@@ -3,7 +3,7 @@
   "displayName": "灵境·",
   "publisher": "dengwei",
   "description": "支持 Qwen、GLM 和自定义模型的 VS Code 智能编码助手。",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
@@ -168,6 +168,13 @@
           ],
           "description": "灵境工具权限模式。该设置提供应用层审批，不等同于操作系统沙箱"
         },
+        "soul-bleach.subagentConcurrency": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 3,
+          "description": "只读子智能体的最大并发请求数。服务商容易限流时建议设为 1 或 2"
+        },
         "soul-bleach.mcpServers": {
           "type": "array",
           "default": [],
@@ -195,7 +202,7 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js out/test/text-patch.test.js out/test/tool-efficiency.test.js out/test/subagent.test.js out/test/run-state.test.js"
+    "test": "pnpm run compile && node --test out/test/atomic-file.test.js out/test/attachments.test.js out/test/context.test.js out/test/text-patch.test.js out/test/tool-efficiency.test.js out/test/subagent.test.js out/test/transport.test.js out/test/run-budget.test.js out/test/run-state.test.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

@@ -15,7 +15,7 @@ export function createSubagentMessages(parentTask: string, task: SubagentTaskInp
     return [
         {
             role: 'system',
-            content: `你是主智能体派出的 ${task.role} 子智能体。${rolePrompt[task.role]} 使用工具获取事实，最终返回简洁中文摘要和文件行号。你不能写文件、启动进程或执行 Git 写操作。`
+            content: `你是主智能体派出的 ${task.role} 子智能体。${rolePrompt[task.role]} 使用工具获取事实。最终按“结论、证据（文件与行号）、风险、未覆盖范围”四部分返回简洁中文摘要。工具报错时先修正参数或改用其他只读工具，不要直接放弃。你不能写文件、启动进程或执行 Git 写操作。`
         },
         { role: 'user', content: `主任务:\n${parentTask}\n\n你的独立子任务:\n${task.task}` }
     ];
